@@ -113,7 +113,7 @@ class RoastEngine:
             "socratic": [
                 f"Ouch. {damage} damage from a {attacker}. Do you feel good about yourself?",
                 "Did you just stand there and take that? Remarkable incompetence.",
-                f"The {attacker} is judging you. And honestly, I'm同情.",
+                f"The {attacker} is judging you. And honestly, I'm judging you too.",
                 "There's no I in team, but there's definitely in damage taken.",
                 f"{damage} HP gone. That's not a bug, that's a feature of your playstyle."
             ],
@@ -646,13 +646,13 @@ def draw_menu(screen):
     screen.blit(high_text, (WIDTH // 2 - high_text.get_width() // 2, 520))
     
     instructions = [
-        "🎮 CONTROLS:",
+        "CONTROLS:",
         "1-5: Select attack",
         "U: Open upgrade shop",
         "H: Heal (30 gold)",
         "ENTER: End turn",
         "",
-        "🎯 Goal: Defeat the Legacy Code Boss on Floor 5!"
+        "Goal: Defeat the Legacy Code Boss on Floor 5!"
     ]
     
     for i, line in enumerate(instructions):
@@ -692,7 +692,7 @@ def draw_upgrade_shop(screen, game):
     pygame.draw.rect(screen, DARK_GRAY, shop_rect)
     pygame.draw.rect(screen, GOLD, shop_rect, 4)
     
-    title = font_large.render("🛒 UPGRADE SHOP", True, YELLOW)
+    title = font_large.render("UPGRADE SHOP", True, YELLOW)
     screen.blit(title, (WIDTH // 2 - title.get_width() // 2, 120))
     
     gold_text = font_medium.render(f"Your Gold: {game.player.gold}", True, GOLD)
