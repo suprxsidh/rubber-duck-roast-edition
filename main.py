@@ -284,10 +284,12 @@ class PlayerStats:
         return False
     
     def add_xp(self, amount):
-        """Add XP and check for level up"""
+        """Add XP and check for level up. Returns True if player leveled up."""
         self.xp += amount
+        leveled_up = False
         while self.level_up():
-            pass  # Handle multiple level ups
+            leveled_up = True  # Handle multiple level ups
+        return leveled_up
     
     def reset_charge(self):
         """Reset charge at start of combat"""
@@ -665,6 +667,8 @@ class RoastEngine:
             return self._roast_upgrade(context)
         elif event_type == "boss_fight":
             return self._roast_boss()
+        elif event_type == "level_up":
+            return self._roast_level_up(context)
         else:
             return "The duck stares at you in confusion. Even the roast engine is confused."
     
@@ -869,6 +873,31 @@ class RoastEngine:
                 "The boss has entered the arena. Time to deliver or get pip'd.",
                 "Final boss: Legacy Code. The stakeholder is watching.",
                 "This is your big moment. Don't mess it up. (You'll mess it up.)"
+            ]
+        }
+        return random.choice(roasts[self.current_personality])
+    
+    def _roast_level_up(self, context):
+        new_level = context.get("new_level", 1)
+        
+        roasts = {
+            "socratic": [
+                f"You leveled up! Even the bugs are impressed.",
+                f"Level {new_level}? Don't let it go to your head.",
+                "Congratulations on leveling up. Now try not to die immediately.",
+                f"Level {new_level} achieved. The void remains unimpressed."
+            ],
+            "existential": [
+                "You've grown stronger. And yet, the bugs persist.",
+                f"Level {new_level}. Power is an illusion. So is victory.",
+                "You level up. The bugs don't care. They will persist.",
+                f"Level {new_level} - more power, same existential dread."
+            ],
+            "corporate": [
+                f"Level {new_level}! HR will want to discuss your career growth.",
+                "You've been promoted. Same bugs, higher expectations.",
+                f"Level {new_level} achieved! Let's circle back on your KPIs.",
+                "Congratulations on the promotion. Now deliver more damage."
             ]
         }
         return random.choice(roasts[self.current_personality])
@@ -1148,10 +1177,36 @@ class Game:
             effects.add_shake(15, 20)
             
             # Grant XP and gold
-            self.stats.add_xp(enemy.xp_reward)
+            leveled_up = self.stats.add_xp(enemy.xp_reward)
             self.stats.gold += enemy.gold_reward
-            self.roast_message = self.roast_engine.get_roast("victory", {"enemy": enemy.name})
-            result_message = f"\n[VICTORY] {enemy.name} defeated! +{enemy.xp_reward} XP, {enemy.gold_reward} gold!"
+            
+            # Level up celebration!
+            if leveled_up:
+                # Screen flash - gold color
+                effects.add_screen_flash(GOLD, 25)
+                effects.add_shake(15, 20)
+                
+                # Floating text "LEVEL UP!"
+                effects.add_floating_text(WIDTH//2, 200, "LEVEL UP!", GOLD, 60)
+                effects.add_floating_text(WIDTH//2, 240, f"Welcome to Level {self.stats.level}!", WHITE, 50)
+                
+                # Particle celebration
+                for _ in range(25):
+                    effects.add_particle(
+                        WIDTH//2 + random.randint(-200, 200),
+                        HEIGHT//2,
+                        random.choice([GOLD, YELLOW, ORANGE, WHITE]),
+                        random.randint(4, 12),
+                        (random.uniform(-5, 5), random.uniform(-8, -3)),
+                        50
+                    )
+                
+                # Roast message for level up
+                self.roast_message = self.roast_engine.get_roast("level_up", {"new_level": self.stats.level})
+                result_message = f"\n[VICTORY] {enemy.name} defeated! +{enemy.xp_reward} XP, {enemy.gold_reward} gold!\n*** LEVEL UP! Now level {self.stats.level}! ***"
+            else:
+                self.roast_message = self.roast_engine.get_roast("victory", {"enemy": enemy.name})
+                result_message = f"\n[VICTORY] {enemy.name} defeated! +{enemy.xp_reward} XP, {enemy.gold_reward} gold!"
             
             self.current_enemy_index += 1
             if self.current_enemy_index >= len(self.enemies):
