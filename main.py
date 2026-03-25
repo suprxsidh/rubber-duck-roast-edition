@@ -5,6 +5,26 @@ import math
 
 pygame.init()
 
+# ============================================
+# COMBAT ACTIONS DEFINITION
+# ============================================
+ACTIONS = {
+    "charge": {"key": 1, "cost": 0, "name": "CHARGE"},
+    "dodge": {"key": 2, "cost": 0, "name": "DODGE"},
+    "block": {"key": 3, "cost": 0, "name": "BLOCK"},
+    "shoot": {"key": 4, "cost": 1, "name": "SHOOT"},
+    "special": {"key": 5, "cost": 2, "name": "SPECIAL"},
+}
+
+# Action success rates
+ACTION_RATES = {
+    "dodge": 85,      # 85% against charge=1
+    "block_charge1": 70,  # 70% against charge=1
+    "block_charge2plus": 60,  # 60% against charge=2-3
+    "shoot": 85,      # 85% hit rate
+    "special": 70,    # 70% hit rate
+}
+
 WIDTH, HEIGHT = 1200, 800
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
 pygame.display.set_caption("Rubber Duck Debugging: The Roast Edition")
@@ -146,6 +166,255 @@ class VisualEffects:
 
 
 effects = VisualEffects()
+
+
+# ============================================
+# PLAYER STATS CLASS
+# ============================================
+class PlayerStats:
+    def __init__(self):
+        self.level = 1
+        self.xp = 0
+        self.xp_to_next = 100  # For level 2
+        self.hp = 100
+        self.max_hp = 100
+        self.attack = 15
+        self.defense = 10
+        self.speed = 10
+        self.crit = 5  # 5% crit chance
+        self.gold = 0
+        self.charge = 0
+        self.max_charge = 10
+    
+    def level_up(self):
+        """Returns True if player leveled up"""
+        if self.xp >= self.xp_to_next:
+            self.level += 1
+            self.xp -= self.xp_to_next
+            
+            # XP formula: level * 100 + (level-1) * 50 for next level
+            self.xp_to_next = self.level * 100 + (self.level - 1) * 50
+            
+            # Stat growth
+            self.max_hp += 12
+            self.hp = self.max_hp  # Full heal on level up
+            self.attack += 3
+            self.defense += 2
+            self.speed += 1
+            self.crit += 0.5
+            
+            return True
+        return False
+    
+    def add_xp(self, amount):
+        """Add XP and check for level up"""
+        self.xp += amount
+        while self.level_up():
+            pass  # Handle multiple level ups
+    
+    def reset_charge(self):
+        """Reset charge at start of combat"""
+        self.charge = 0
+    
+    def add_charge(self, amount=1):
+        """Add charge, capped at max_charge"""
+        self.charge = min(self.max_charge, self.charge + amount)
+
+
+# ============================================
+# COMBAT MANAGER FOR CHARGE-BASED COMBAT
+# ============================================
+class CombatManager:
+    def __init__(self):
+        self.last_player_action = None
+        self.last_enemy_action = None
+        self.combat_log = []
+    
+    def resolve_player_action(self, player, enemy, action_name):
+        """
+        Resolve player's action based on the charge-based combat system.
+        
+        Flow:
+        1. Player picks action
+        2. Charge +1 at turn start (handled elsewhere)
+        3. Resolve action based on type
+        """
+        self.last_player_action = action_name
+        result = {
+            "action": action_name,
+            "success": False,
+            "damage": 0,
+            "message": "",
+            "effects": []
+        }
+        
+        # Check if action requires charge
+        action_cost = ACTIONS[action_name]["cost"]
+        if player.charge < action_cost:
+            result["message"] = f"Not enough charge! Need {action_cost}, have {player.charge}"
+            return result
+        
+        if action_name == "charge":
+            # Just add charge, no other effect
+            player.add_charge(1)
+            result["success"] = True
+            result["message"] = "Charged up! +1 Charge"
+            return result
+        
+        elif action_name == "dodge":
+            # Dodge blocks Shoot only - 85% against charge=1, auto-fail against charge>1
+            if enemy.charge <= 1:
+                if random.random() < 0.85:  # 85%
+                    result["success"] = True
+                    result["message"] = "Dodged the attack!"
+                    result["effects"].append("dodged")
+                else:
+                    result["message"] = "Dodge failed!"
+            else:
+                result["message"] = "Dodge failed! Enemy charge too high!"
+            return result
+        
+        elif action_name == "block":
+            # Block blocks Shoot/Special - 70%/60%
+            if enemy.charge <= 1:
+                if random.random() < 0.70:  # 70%
+                    result["success"] = True
+                    result["message"] = "Blocked the attack!"
+                    result["effects"].append("blocked")
+                else:
+                    result["message"] = "Block failed!"
+            else:  # charge >= 2
+                if random.random() < 0.60:  # 60%
+                    result["success"] = True
+                    result["message"] = "Blocked the attack!"
+                    result["effects"].append("blocked")
+                else:
+                    result["message"] = "Block failed!"
+            return result
+        
+        elif action_name == "shoot":
+            # Uses 1 charge, 85% hit, deals damage
+            player.charge -= action_cost
+            if random.random() < 0.85:  # 85% hit rate
+                # Calculate damage
+                is_crit = random.random() * 100 < player.crit
+                base_damage = player.attack
+                if is_crit:
+                    base_damage *= 2
+                
+                damage = enemy.take_damage(base_damage)
+                result["success"] = True
+                result["damage"] = damage
+                if is_crit:
+                    result["message"] = f"CRITICAL! Dealt {damage} damage!"
+                    result["effects"].append("crit")
+                else:
+                    result["message"] = f"Shot hit for {damage} damage!"
+            else:
+                result["message"] = "Shot missed!"
+            return result
+        
+        elif action_name == "special":
+            # Uses 2 charges, 70% hit, deals 2x damage
+            player.charge -= action_cost
+            if random.random() < 0.70:  # 70% hit rate
+                # Calculate damage (2x)
+                is_crit = random.random() * 100 < player.crit
+                base_damage = player.attack * 2
+                if is_crit:
+                    base_damage *= 2
+                
+                damage = enemy.take_damage(base_damage)
+                result["success"] = True
+                result["damage"] = damage
+                if is_crit:
+                    result["message"] = f"MASSIVE CRITICAL! Dealt {damage} damage!"
+                    result["effects"].append("crit")
+                else:
+                    result["message"] = f"Special attack hit for {damage} damage!"
+            else:
+                result["message"] = "Special attack missed!"
+            return result
+        
+        return result
+    
+    def resolve_enemy_turn(self, player, enemy):
+        """
+        Resolve enemy's attack based on their charge level.
+        """
+        enemy.add_charge()
+        
+        result = {
+            "action": "attack",
+            "damage": 0,
+            "blocked": False,
+            "dodged": False,
+            "message": ""
+        }
+        
+        # Enemy attack based on charge level
+        # If enemy charge >= 2, they do charge attack
+        if enemy.charge >= 2:
+            # Charge attack - more damage
+            base_damage = enemy.attack * 1.5
+            damage = player.take_damage(int(base_damage))
+            result["damage"] = damage
+            result["message"] = f"Enemy used CHARGE ATTACK! Dealt {damage} damage!"
+        else:
+            # Normal attack
+            damage = player.take_damage(enemy.attack)
+            result["damage"] = damage
+            result["message"] = f"Enemy attacked for {damage} damage!"
+        
+        self.last_enemy_action = result
+        return result
+
+
+# ============================================
+# ENEMY CLASS FOR CHARGE-BASED COMBAT
+# ============================================
+class Enemy:
+    ENEMY_TYPES = {
+        "Syntax Error": {"hp": 30, "attack": 8, "defense": 2, "emoji": "X", "xp": 10, "gold": 5},
+        "Null Pointer": {"hp": 25, "attack": 12, "defense": 0, "emoji": "NULL", "xp": 12, "gold": 8},
+        "Infinite Loop": {"hp": 50, "attack": 5, "defense": 5, "emoji": "LOOP", "xp": 20, "gold": 15},
+        "Memory Leak": {"hp": 35, "attack": 10, "defense": 3, "emoji": "LEAK", "xp": 15, "gold": 10},
+        "Race Condition": {"hp": 40, "attack": 15, "defense": 2, "emoji": "RACE", "xp": 18, "gold": 12},
+        "Legacy Code Boss": {"hp": 200, "attack": 25, "defense": 10, "emoji": "BOSS", "xp": 100, "gold": 100},
+    }
+    
+    def __init__(self, enemy_type=None, level=1):
+        if enemy_type is None:
+            enemy_type = random.choice(list(self.ENEMY_TYPES.keys())[:-1])
+        
+        stats = self.ENEMY_TYPES[enemy_type]
+        self.name = enemy_type
+        self.level = level
+        self.hp = stats["hp"]
+        self.max_hp = stats["hp"]
+        self.attack = stats["attack"]
+        self.defense = stats["defense"]
+        self.emoji = stats["emoji"]
+        self.xp_reward = stats["xp"]
+        self.gold_reward = stats["gold"]
+        self.charge = 0  # Enemy charge for attacks
+        self.charge_attack = 1  # Charge attack threshold
+    
+    def is_alive(self):
+        return self.hp > 0
+    
+    def take_damage(self, damage):
+        actual_damage = max(1, damage - self.defense)
+        self.hp = max(0, self.hp - actual_damage)
+        return actual_damage
+    
+    def reset_charge(self):
+        """Reset charge at start of combat"""
+        self.charge = 0
+    
+    def add_charge(self):
+        """Add charge each turn"""
+        self.charge += 1
 
 
 # ASCII art and sprite definitions
@@ -567,6 +836,8 @@ class Game:
     def __init__(self):
         self.roast_engine = RoastEngine()
         self.player = Player()
+        self.stats = PlayerStats()  # New charge-based stats
+        self.combat_manager = CombatManager()  # New combat manager
         self.enemies = []
         self.current_enemy_index = 0
         self.game_state = "menu"
@@ -575,6 +846,7 @@ class Game:
         self.high_score = 0
         self.score = 0
         self.action_cooldown = 0
+        self.turn_in_progress = False  # Track if player is in combat turn
         
         self.generate_floor()
     
@@ -596,22 +868,125 @@ class Game:
             return self.enemies[self.current_enemy_index]
         return None
     
-    def player_attack(self, attack_name):
+    def player_attack(self, action_key):
+        """Handle player action using charge-based combat system."""
         global effects
-        if not self.player.can_act():
-            return "No actions left!"
+        
+        # Map keys to action names
+        action_map = {
+            1: "charge",
+            2: "dodge", 
+            3: "block",
+            4: "shoot",
+            5: "special"
+        }
+        
+        if action_key not in action_map:
+            return "Invalid action!"
+        
+        action_name = action_map[action_key]
         
         enemy = self.get_current_enemy()
         if not enemy:
             return "No enemy to attack!"
         
-        self.player.actions_used += 1
+        # Add +1 charge at turn start
+        self.stats.add_charge(1)
         
-        if attack_name == "Float Above":
-            self.player.dodging = True
-            self.roast_message = self.roast_engine.get_roast("attack", {"attack": attack_name, "enemy_hp": enemy.hp})
-            effects.add_floating_text(WIDTH//2, 300, "Dodging!", CYAN, 30)
-            return f"[DEF] You float above! Next attack will be dodged!"
+        # Resolve player action
+        result = self.combat_manager.resolve_player_action(self.stats, enemy, action_name)
+        
+        # Add visual effects based on action
+        if action_name == "charge":
+            effects.add_floating_text(WIDTH//2 - 150, 300, "+1 CHARGE", CYAN, 30)
+            effects.add_screen_flash(CYAN, 8)
+        elif action_name == "dodge":
+            if result["success"]:
+                effects.add_floating_text(WIDTH//2 - 150, 300, "DODGED!", CYAN, 30)
+                effects.add_screen_flash(CYAN, 10)
+            else:
+                effects.add_floating_text(WIDTH//2 - 150, 300, "DODGE FAILED", RED, 30)
+        elif action_name == "block":
+            if result["success"]:
+                effects.add_floating_text(WIDTH//2 - 150, 300, "BLOCKED!", GREEN, 30)
+                effects.add_screen_flash(GREEN, 10)
+            else:
+                effects.add_floating_text(WIDTH//2 - 150, 300, "BLOCK FAILED", RED, 30)
+        elif action_name == "shoot":
+            if result["success"]:
+                if "crit" in result.get("effects", []):
+                    effects.add_floating_text(WIDTH//2 + 150, 280, f"CRITICAL! -{result['damage']}", GOLD, 40)
+                    effects.add_screen_flash(GOLD, 15)
+                else:
+                    effects.add_floating_text(WIDTH//2 + 150, 280, f"-{result['damage']}", WHITE, 35)
+                effects.add_screen_flash(RED, 8)
+                effects.add_shake(8, 10)
+                # Attack particles
+                for _ in range(8):
+                    effects.add_particle(
+                        WIDTH//2 + 150, 300,
+                        RED if "crit" not in result.get("effects", []) else GOLD,
+                        random.randint(3, 8),
+                        (random.uniform(-3, 3), random.uniform(-2, -5)),
+                        25
+                    )
+            else:
+                effects.add_floating_text(WIDTH//2 + 150, 300, "MISS!", GRAY, 30)
+        elif action_name == "special":
+            if result["success"]:
+                if "crit" in result.get("effects", []):
+                    effects.add_floating_text(WIDTH//2 + 150, 280, f"MASSIVE! -{result['damage']}", GOLD, 40)
+                    effects.add_screen_flash(GOLD, 20)
+                else:
+                    effects.add_floating_text(WIDTH//2 + 150, 280, f"-{result['damage']}", ORANGE, 35)
+                effects.add_screen_flash(ORANGE, 12)
+                effects.add_shake(12, 15)
+                # Special attack particles
+                for _ in range(12):
+                    effects.add_particle(
+                        WIDTH//2 + 150, 300,
+                        ORANGE if "crit" not in result.get("effects", []) else GOLD,
+                        random.randint(4, 10),
+                        (random.uniform(-4, 4), random.uniform(-3, -6)),
+                        30
+                    )
+            else:
+                effects.add_floating_text(WIDTH//2 + 150, 300, "MISS!", GRAY, 30)
+        
+        # Check if enemy is defeated
+        if not enemy.is_alive():
+            # Death effect
+            for _ in range(20):
+                effects.add_particle(
+                    WIDTH//2 + 150, 300,
+                    random.choice([RED, ORANGE, PURPLE]),
+                    random.randint(5, 12),
+                    (random.uniform(-5, 5), random.uniform(-6, -2)),
+                    40
+                )
+            effects.add_screen_flash(PURPLE, 20)
+            effects.add_shake(15, 20)
+            
+            # Grant XP and gold
+            self.stats.add_xp(enemy.xp_reward)
+            self.stats.gold += enemy.gold_reward
+            self.roast_message = self.roast_engine.get_roast("victory", {"enemy": enemy.name})
+            result_message = f"\n[VICTORY] {enemy.name} defeated! +{enemy.xp_reward} XP, {enemy.gold_reward} gold!"
+            
+            self.current_enemy_index += 1
+            if self.current_enemy_index >= len(self.enemies):
+                if self.floor >= 5 and self.floor % 5 == 0:
+                    self.game_state = "victory"
+                else:
+                    self.floor += 1
+                    self.generate_floor()
+            
+            return result["message"] + result_message
+        
+        # Enemy turn
+        self.enemy_turn()
+        
+        return result["message"]
         
         damage, crit = self.player.attack_target(attack_name, enemy)
         
@@ -676,19 +1051,27 @@ class Game:
         return result
     
     def enemy_turn(self):
+        """Handle enemy turn using charge-based combat system."""
         global effects
         enemy = self.get_current_enemy()
         if not enemy:
             return
         
-        damage, dodged = enemy.enemy_attack(self.player)
+        # Resolve enemy attack using combat manager
+        result = self.combat_manager.resolve_enemy_turn(self.stats, enemy)
         
-        if dodged:
+        if result.get("dodged"):
             self.roast_message = "You dodged the attack! Even the roast engine is surprised."
             effects.add_floating_text(WIDTH//2 - 150, 300, "DODGED!", CYAN, 30)
             effects.add_screen_flash(CYAN, 10)
+        elif result.get("blocked"):
+            self.roast_message = "You blocked the enemy attack!"
+            effects.add_floating_text(WIDTH//2 - 150, 300, "BLOCKED!", GREEN, 30)
+            effects.add_screen_flash(GREEN, 10)
         else:
+            damage = result.get("damage", 0)
             self.roast_message = self.roast_engine.get_roast("damage_taken", {"damage": damage, "attacker": enemy.name})
+            
             # Damage effects
             effects.add_screen_flash(DARK_RED, 12)
             effects.add_shake(12, 15)
@@ -704,9 +1087,10 @@ class Game:
             
             effects.add_floating_text(WIDTH//2 - 150, 260, f"-{damage}", RED, 35)
         
-        self.score += damage // 2
+        self.score += result.get("damage", 0) // 2
         
-        if not self.player.is_alive():
+        # Check if player is defeated (using stats.hp)
+        if self.stats.hp <= 0:
             self.game_state = "defeat"
             self.roast_message = self.roast_engine.get_roast("defeat", {})
             effects.add_screen_flash(DARK_RED, 30)
@@ -754,12 +1138,13 @@ class Game:
         return f"[BOUGHT] {upgrade_name}!"
     
     def heal_player(self):
+        """Heal the player using gold from new stats."""
         global effects
-        if self.player.gold >= 30:
-            self.player.gold -= 30
-            old_hp = self.player.hp
-            self.player.heal(40)
-            healed_amount = self.player.hp - old_hp
+        if self.stats.gold >= 30:
+            self.stats.gold -= 30
+            old_hp = self.stats.hp
+            self.stats.hp = min(self.stats.max_hp, self.stats.hp + 40)
+            healed_amount = self.stats.hp - old_hp
             
             # Heal effects
             effects.add_screen_flash(GREEN, 12)
@@ -778,6 +1163,8 @@ class Game:
     def start_new_game(self):
         global effects
         self.player = Player()
+        self.stats = PlayerStats()  # Reset new combat stats
+        self.combat_manager = CombatManager()  # Reset combat manager
         self.floor = 1
         self.score = 0
         self.roast_engine.new_game()
@@ -919,7 +1306,8 @@ def draw_battle_scene(surface, game, center_x, center_y):
         pygame.draw.circle(glow_surf, (*YELLOW, glow_alpha), (glow_size//2, glow_size//2), glow_size//2)
         surface.blit(glow_surf, (player_x - glow_size//2, player_y - glow_size//2))
     
-    draw_entity_sprite(surface, player_x, player_y, "player", game.player.name, game.player.hp, game.player.max_hp)
+    # Use new PlayerStats for HP display
+    draw_entity_sprite(surface, player_x, player_y, "player", game.player.name, game.stats.hp, game.stats.max_hp)
     
     # VS indicator
     vs_text = font_large.render("VS", True, WHITE)
@@ -992,17 +1380,17 @@ def draw_game(screen, game):
     pygame.draw.rect(screen, DARK_GRAY, stats_panel, border_radius=8)
     pygame.draw.rect(screen, (50, 50, 70), stats_panel, 2, border_radius=8)
     
-    # Stats with icons
+    # Stats with icons - using new PlayerStats
     stats = [
-        (f"{game.player.gold}", GOLD, "Gold"),
-        (f"{int(game.player.xp)}", CYAN, "XP"),
-        (f"Lv {game.player.level}", GREEN, "Level"),
-        (f"{game.score}", WHITE, "Score"),
-        (f"{game.high_score}", RED, "Best"),
+        (f"{game.stats.charge}/{game.stats.max_charge}", CYAN, "Charge"),
+        (f"{game.stats.hp}/{game.stats.max_hp}", GREEN, "HP"),
+        (f"Lv {game.stats.level}", YELLOW, "Level"),
+        (f"{game.stats.xp}/{game.stats.xp_to_next}", PURPLE, "XP"),
+        (f"{game.stats.gold}", GOLD, "Gold"),
     ]
     
     for i, (value, color, label) in enumerate(stats):
-        x = 80 + i * 200
+        x = 50 + i * 220
         label_text = font_small.render(label, True, (100, 100, 120))
         screen.blit(label_text, (x, 660))
         value_text = font_large.render(value, True, color)
@@ -1182,44 +1570,50 @@ def draw_attack_menu(screen, game, duck_y):
     pygame.draw.rect(screen, CYAN, menu_bg, 3, border_radius=15)
     
     # Title with keyboard hint style
-    title = font_large.render("ATTACKS", True, YELLOW)
+    title = font_large.render("COMBAT ACTIONS", True, YELLOW)
     screen.blit(title, (menu_x + 20, menu_y + 15))
     
-    # Actions remaining
-    actions_left = game.player.actions_per_turn - game.player.actions_used
-    on_cooldown = game.action_cooldown > 0
-    if on_cooldown:
-        actions_text = font_medium.render(f"WAIT... ({game.action_cooldown})", True, RED)
-    else:
-        actions_text = font_medium.render(f"Actions: {actions_left}/{game.player.actions_per_turn}", True, GREEN if actions_left > 0 else RED)
-    screen.blit(actions_text, (menu_x + 20, menu_y + 50))
+    # Charge display
+    charge_color = CYAN if game.stats.charge >= 1 else GRAY
+    charge_text = font_medium.render(f"Charge: {game.stats.charge}/{game.stats.max_charge}", True, charge_color)
+    screen.blit(charge_text, (menu_x + 20, menu_y + 45))
     
-    # Attack list with keyboard indicators
-    y_offset = 90
-    for i, (name, attack) in enumerate(game.player.attacks.items()):
-        key = str(i + 1)
-        can_use = game.player.can_act() and not on_cooldown
+    # Combat actions list
+    y_offset = 85
+    
+    # Define combat actions with descriptions
+    combat_actions = [
+        ("1", "CHARGE", "Get +1 charge", "100%", CYAN),
+        ("2", "DODGE", "Block Shoot (85%)", f"vs charge=1", BLUE),
+        ("3", "BLOCK", "Block attack", "70%/60%", GREEN),
+        ("4", "SHOOT", f"1 charge, {game.stats.attack} DMG", "85% hit", RED),
+        ("5", "SPECIAL", f"2 charge, {game.stats.attack*2} DMG", "70% hit", ORANGE),
+    ]
+    
+    for key, name, desc, rate, color in combat_actions:
+        # Check if action can be used
+        action_cost = ACTIONS[name.lower()]["cost"]
+        can_use = game.stats.charge >= action_cost
         
         # Row background
         row_bg = pygame.Rect(menu_x + 10, menu_y + y_offset, menu_width - 20, 50)
         bg_color = (40, 40, 60) if can_use else (25, 25, 30)
         pygame.draw.rect(screen, bg_color, row_bg, border_radius=8)
         
-        # Key indicator box - bigger
+        # Key indicator box
         key_box = pygame.Rect(menu_x + 20, menu_y + y_offset + 10, 36, 36)
-        key_bg = PURPLE if can_use else (50, 50, 50)
+        key_bg = color if can_use else (50, 50, 50)
         pygame.draw.rect(screen, key_bg, key_box, border_radius=6)
         pygame.draw.rect(screen, WHITE if can_use else GRAY, key_box, 2, border_radius=6)
         key_text = font_medium.render(key, True, WHITE if can_use else GRAY)
         screen.blit(key_text, (menu_x + 26, menu_y + y_offset + 15))
         
-        # Attack name - bigger font
-        atk_text = f"{name}"
-        atk_render = font_medium.render(atk_text, True, WHITE if can_use else GRAY)
-        screen.blit(atk_render, (menu_x + 70, menu_y + y_offset + 5))
+        # Action name
+        name_render = font_medium.render(name, True, color if can_use else GRAY)
+        screen.blit(name_render, (menu_x + 70, menu_y + y_offset + 5))
         
-        # Damage/accuracy info - more visible
-        info_text = f"{attack['damage']} DMG  |  {attack['accuracy']}% ACC"
+        # Description
+        info_text = f"{desc}"
         info_render = font_small.render(info_text, True, CYAN if can_use else GRAY)
         screen.blit(info_render, (menu_x + 70, menu_y + y_offset + 28))
         
@@ -1364,30 +1758,11 @@ def main():
                                 result = game.buy_upgrade(name)
                                 print(result)
                     else:
-                        if game.action_cooldown > 0:
-                            pass
-                        elif game.player.can_act():
-                            if event.key in [pygame.K_1, pygame.K_2, pygame.K_3, pygame.K_4, pygame.K_5]:
-                                idx = event.key - pygame.K_1
-                                if idx < len(game.player.attacks):
-                                    name = list(game.player.attacks.keys())[idx]
-                                    result = game.player_attack(name)
-                                    print(result)
-                                    game.action_cooldown = 15
-                            
-                            elif event.key == pygame.K_6:
-                                if len(game.player.attacks) > 5:
-                                    name = list(game.player.attacks.keys())[5]
-                                    result = game.player_attack(name)
-                                    print(result)
-                                    game.action_cooldown = 15
-                            
-                            elif event.key == pygame.K_7:
-                                if len(game.player.attacks) > 6:
-                                    name = list(game.player.attacks.keys())[6]
-                                    result = game.player_attack(name)
-                                    print(result)
-                                    game.action_cooldown = 15
+                        # Handle new combat actions (keys 1-5)
+                        if event.key in [pygame.K_1, pygame.K_2, pygame.K_3, pygame.K_4, pygame.K_5]:
+                            action_key = event.key - pygame.K_1 + 1  # Convert to 1-5
+                            result = game.player_attack(action_key)
+                            print(result)
                         
                         elif event.key == pygame.K_u:
                             shop_open = True
@@ -1395,12 +1770,6 @@ def main():
                         elif event.key == pygame.K_h:
                             result = game.heal_player()
                             print(result)
-                        
-                        elif event.key == pygame.K_RETURN:
-                            if game.get_current_enemy():
-                                game.enemy_turn()
-                                game.player.reset_turn()
-                                game.action_cooldown = 0
                 
                 elif game.game_state in ["victory", "defeat"]:
                     if event.key == pygame.K_RETURN:
