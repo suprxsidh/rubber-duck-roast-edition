@@ -1,6 +1,7 @@
 import pygame
 import random
 import sys
+import math
 
 pygame.init()
 pygame.font.init()
@@ -10,26 +11,186 @@ screen = pygame.display.set_mode((WIDTH, HEIGHT))
 pygame.display.set_caption("Rubber Duck Debugging: The Roast Edition")
 clock = pygame.time.Clock()
 
+# Enhanced color scheme
 WHITE = (255, 255, 255)
-BLACK = (0, 0, 0)
+BLACK = (10, 10, 20)
 YELLOW = (255, 223, 0)
-RED = (220, 50, 50)
-GREEN = (50, 200, 50)
-BLUE = (50, 100, 200)
-PURPLE = (150, 50, 200)
-GRAY = (100, 100, 100)
-DARK_GRAY = (50, 50, 50)
 GOLD = (255, 215, 0)
+RED = (220, 50, 50)
+DARK_RED = (150, 30, 30)
+GREEN = (50, 220, 80)
+DARK_GREEN = (30, 100, 50)
+BLUE = (60, 130, 255)
+CYAN = (0, 200, 220)
+PURPLE = (180, 80, 220)
+PINK = (255, 100, 150)
+ORANGE = (255, 150, 50)
 
+GRAY = (100, 100, 120)
+DARK_GRAY = (40, 40, 55)
+LIGHT_GRAY = (150, 150, 170)
+
+# Background gradient colors
+BG_TOP = (15, 15, 35)
+BG_BOTTOM = (30, 20, 50)
+
+# Try to use a better font, fallback gracefully
 try:
     font_emoji = pygame.font.Font("/System/Library/Fonts/Apple Color Emoji.ttc", 48)
 except:
     font_emoji = pygame.font.Font(None, 48)
 
-font_title = pygame.font.Font(None, 64)
-font_large = pygame.font.Font(None, 48)
-font_medium = pygame.font.Font(None, 32)
-font_small = pygame.font.Font(None, 24)
+font_title = pygame.font.Font(None, 56)
+font_large = pygame.font.Font(None, 40)
+font_medium = pygame.font.Font(None, 28)
+font_small = pygame.font.Font(None, 22)
+font_tiny = pygame.font.Font(None, 18)
+
+
+# Visual effects system
+class VisualEffects:
+    def __init__(self):
+        self.screen_flash = None
+        self.particles = []
+        self.floating_text = []
+        self.shake_offset = [0, 0]
+        self.shake_duration = 0
+    
+    def add_screen_flash(self, color, duration=10):
+        self.screen_flash = {"color": color, "duration": duration, "alpha": 180}
+    
+    def add_particle(self, x, y, color, size, velocity, lifetime=30):
+        self.particles.append({
+            "x": x, "y": y, "color": color, "size": size,
+            "vx": velocity[0], "vy": velocity[1],
+            "lifetime": lifetime, "max_lifetime": lifetime
+        })
+    
+    def add_floating_text(self, x, y, text, color, lifetime=40):
+        self.floating_text.append({
+            "x": x, "y": y, "text": text, "color": color,
+            "lifetime": lifetime, "max_lifetime": lifetime
+        })
+    
+    def add_shake(self, intensity=10, duration=15):
+        self.shake_duration = duration
+        self.shake_intensity = intensity
+    
+    def update(self):
+        # Update screen flash
+        if self.screen_flash:
+            self.screen_flash["duration"] -= 1
+            self.screen_flash["alpha"] = int(180 * (self.screen_flash["duration"] / 10))
+            if self.screen_flash["duration"] <= 0:
+                self.screen_flash = None
+        
+        # Update particles
+        for p in self.particles[:]:
+            p["x"] += p["vx"]
+            p["y"] += p["vy"]
+            p["vy"] += 0.1  # gravity
+            p["lifetime"] -= 1
+            if p["lifetime"] <= 0:
+                self.particles.remove(p)
+        
+        # Update floating text
+        for t in self.floating_text[:]:
+            t["y"] -= 1.5
+            t["lifetime"] -= 1
+            if t["lifetime"] <= 0:
+                self.floating_text.remove(t)
+        
+        # Update shake
+        if self.shake_duration > 0:
+            self.shake_duration -= 1
+            self.shake_offset[0] = random.randint(-self.shake_intensity, self.shake_intensity)
+            self.shake_offset[1] = random.randint(-self.shake_intensity, self.shake_intensity)
+        else:
+            self.shake_offset = [0, 0]
+    
+    def draw(self, surface):
+        # Draw particles
+        for p in self.particles:
+            alpha = int(255 * (p["lifetime"] / p["max_lifetime"]))
+            s = pygame.Surface((p["size"]*2, p["size"]*2), pygame.SRCALPHA)
+            color = (*p["color"], alpha)
+            pygame.draw.circle(s, color, (p["size"], p["size"]), p["size"])
+            surface.blit(s, (p["x"] - p["size"], p["y"] - p["size"]))
+        
+        # Draw floating text
+        for t in self.floating_text:
+            alpha = int(255 * (t["lifetime"] / t["max_lifetime"]))
+            font = font_small if len(t["text"]) < 15 else font_tiny
+            text = font.render(t["text"], True, t["color"])
+            text.set_alpha(alpha)
+            surface.blit(text, (t["x"] - text.get_width()//2, t["y"]))
+        
+        # Draw screen flash
+        if self.screen_flash:
+            flash = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+            flash.fill((*self.screen_flash["color"], self.screen_flash["alpha"]))
+            surface.blit(flash, (0, 0))
+    
+    def get_shake_offset(self):
+        return self.shake_offset
+
+
+effects = VisualEffects()
+
+
+# ASCII art and sprite definitions
+DUCK_SPRITE = r"""
+    _>
+   ( )>
+  __"_"___
+  _/ \_   \__
+ /  o  \     \_
+|    __|______)
+ \  o/        
+  \/
+"""
+
+ENEMY_SPRITES = {
+    "Syntax Error": r"""
+  _____
+ |  X  |
+ |_____|""",
+    "Null Pointer": r"""
+  _____
+ |NULL |
+ |_____|""",
+    "Infinite Loop": r"""
+ |~~~~~|
+ |     |
+ |_____|
+ |~~~~~|
+ |     |""",
+    "Memory Leak": r"""
+  _____
+ |  ~  |
+ |~~~~~|
+ |_____|""",
+    "Race Condition": r"""
+  /---\
+  |>>>|
+  \___/""",
+    "Legacy Code Boss": r"""
+  _______________
+ |   LEGACY     |
+ |    BOSS      |
+ |_____________|
+ |   (O_O)     |
+ |_____________|"""
+}
+
+
+def draw_gradient_background(surface):
+    for y in range(HEIGHT):
+        ratio = y / HEIGHT
+        r = int(BG_TOP[0] + (BG_BOTTOM[0] - BG_TOP[0]) * ratio)
+        g = int(BG_TOP[1] + (BG_BOTTOM[1] - BG_TOP[1]) * ratio)
+        b = int(BG_TOP[2] + (BG_BOTTOM[2] - BG_TOP[2]) * ratio)
+        pygame.draw.line(surface, (r, g, b), (0, y), (WIDTH, y))
 
 
 
@@ -425,6 +586,7 @@ class Game:
         return None
     
     def player_attack(self, attack_name):
+        global effects
         if not self.player.can_act():
             return "No actions left!"
         
@@ -437,24 +599,56 @@ class Game:
         if attack_name == "Float Above":
             self.player.dodging = True
             self.roast_message = self.roast_engine.get_roast("attack", {"attack": attack_name, "enemy_hp": enemy.hp})
+            effects.add_floating_text(WIDTH//2, 300, "Dodging!", CYAN, 30)
             return f"[DEF] You float above! Next attack will be dodged!"
         
         damage, crit = self.player.attack_target(attack_name, enemy)
         
         if damage == 0:
             self.roast_message = self.roast_engine.get_roast("mistake", {"mistake": "missed attack"})
+            effects.add_floating_text(WIDTH//2, 300, "MISS!", GRAY, 30)
             return f"[MISS] You missed with {attack_name}!"
         
         self.roast_message = self.roast_engine.get_roast("attack", {"attack": attack_name, "enemy_hp": enemy.hp})
         
+        # Visual effects for attack
+        effects.add_screen_flash(RED, 8)
+        effects.add_shake(8, 10)
+        
+        # Attack particles
+        for _ in range(8):
+            effects.add_particle(
+                WIDTH//2 + 150, 300,
+                RED if crit else ORANGE,
+                random.randint(3, 8),
+                (random.uniform(-3, 3), random.uniform(-2, -5)),
+                25
+            )
+        
         result = f"[ATK] You used {attack_name}! "
         if crit:
             result += f"CRITICAL HIT! "
+            effects.add_floating_text(WIDTH//2, 280, "CRITICAL!", GOLD, 40)
+            effects.add_screen_flash(GOLD, 15)
         result += f"Dealt {damage} damage!"
+        
+        effects.add_floating_text(WIDTH//2, 260, f"-{damage}", WHITE if not crit else GOLD, 35)
         
         self.score += damage
         
         if not enemy.is_alive():
+            # Death effect
+            for _ in range(20):
+                effects.add_particle(
+                    WIDTH//2 + 150, 300,
+                    random.choice([RED, ORANGE, PURPLE]),
+                    random.randint(5, 12),
+                    (random.uniform(-5, 5), random.uniform(-6, -2)),
+                    40
+                )
+            effects.add_screen_flash(PURPLE, 20)
+            effects.add_shake(15, 20)
+            
             self.player.xp += enemy.xp_reward * self.player.xp_multiplier
             self.player.gold += enemy.gold_reward
             self.roast_message = self.roast_engine.get_roast("victory", {"enemy": enemy.name})
@@ -471,6 +665,7 @@ class Game:
         return result
     
     def enemy_turn(self):
+        global effects
         enemy = self.get_current_enemy()
         if not enemy:
             return
@@ -479,18 +674,36 @@ class Game:
         
         if dodged:
             self.roast_message = "You dodged the attack! Even the roast engine is surprised."
+            effects.add_floating_text(WIDTH//2 - 150, 300, "DODGED!", CYAN, 30)
+            effects.add_screen_flash(CYAN, 10)
         else:
             self.roast_message = self.roast_engine.get_roast("damage_taken", {"damage": damage, "attacker": enemy.name})
+            # Damage effects
+            effects.add_screen_flash(DARK_RED, 12)
+            effects.add_shake(12, 15)
+            
+            for _ in range(10):
+                effects.add_particle(
+                    WIDTH//2 - 150, 300,
+                    RED,
+                    random.randint(4, 10),
+                    (random.uniform(-4, 4), random.uniform(-3, -6)),
+                    25
+                )
+            
+            effects.add_floating_text(WIDTH//2 - 150, 260, f"-{damage}", RED, 35)
         
         self.score += damage // 2
         
         if not self.player.is_alive():
             self.game_state = "defeat"
             self.roast_message = self.roast_engine.get_roast("defeat", {})
+            effects.add_screen_flash(DARK_RED, 30)
             if self.score > self.high_score:
                 self.high_score = self.score
     
     def buy_upgrade(self, upgrade_name):
+        global effects
         if upgrade_name not in self.player.upgrades:
             return "Upgrade not found!"
         
@@ -500,6 +713,17 @@ class Game:
         
         self.player.gold -= upgrade["cost"]
         
+        # Upgrade effects
+        effects.add_screen_flash(GREEN, 15)
+        for _ in range(15):
+            effects.add_particle(
+                WIDTH//2, HEIGHT//2,
+                random.choice([GOLD, YELLOW, GREEN]),
+                random.randint(4, 10),
+                (random.uniform(-4, 4), random.uniform(-5, -2)),
+                35
+            )
+        
         if upgrade_name == "Sonic Quack":
             self.player.attacks["Sonic Quack"] = {"damage": upgrade["damage"], "accuracy": upgrade["accuracy"], "description": upgrade["description"]}
         else:
@@ -507,22 +731,41 @@ class Game:
             if upgrade["effect"] == "max_hp":
                 self.player.max_hp += upgrade["value"]
                 self.player.hp += upgrade["value"]
+                effects.add_floating_text(WIDTH//2, HEIGHT//2 - 50, f"+{upgrade['value']} HP", GREEN, 40)
             elif upgrade["effect"] == "crit":
                 self.player.crit_chance += upgrade["value"]
+                effects.add_floating_text(WIDTH//2, HEIGHT//2 - 50, f"+{upgrade['value']}% Crit", GOLD, 40)
             elif upgrade["effect"] == "xp_boost":
                 self.player.xp_multiplier += upgrade["value"] / 100
+                effects.add_floating_text(WIDTH//2, HEIGHT//2 - 50, f"+{upgrade['value']}% XP", CYAN, 40)
         
         self.roast_message = self.roast_engine.get_roast("upgrade", {"upgrade": upgrade_name})
         return f"[BOUGHT] {upgrade_name}!"
     
     def heal_player(self):
+        global effects
         if self.player.gold >= 30:
             self.player.gold -= 30
+            old_hp = self.player.hp
             self.player.heal(40)
-            return "[HEALED] Healed for 40 HP!"
+            healed_amount = self.player.hp - old_hp
+            
+            # Heal effects
+            effects.add_screen_flash(GREEN, 12)
+            for _ in range(12):
+                effects.add_particle(
+                    WIDTH//2 - 150, 300,
+                    GREEN,
+                    random.randint(4, 8),
+                    (random.uniform(-3, 3), random.uniform(-4, -2)),
+                    30
+                )
+            effects.add_floating_text(WIDTH//2 - 150, 260, f"+{healed_amount} HP", GREEN, 35)
+            return f"[HEALED] Healed for {healed_amount} HP!"
         return "Not enough gold! (Need 30)"
     
     def start_new_game(self):
+        global effects
         self.player = Player()
         self.floor = 1
         self.score = 0
@@ -530,9 +773,10 @@ class Game:
         self.generate_floor()
         self.game_state = "playing"
         self.roast_message = self.roast_engine.get_roast("turn_start")
+        effects = VisualEffects()  # Reset visual effects for new game
 
 
-def draw_text(surface, text, x, y, font, color=WHITE, max_width=None):
+def draw_text(surface, text, x, y, font, color=WHITE, max_width=None, align="left"):
     if max_width:
         words = text.split()
         lines = []
@@ -550,185 +794,420 @@ def draw_text(surface, text, x, y, font, color=WHITE, max_width=None):
         
         for i, line in enumerate(lines):
             text_surface = font.render(line, True, color)
-            surface.blit(text_surface, (x, y + i * font.get_height()))
+            if align == "center":
+                surface.blit(text_surface, (x - text_surface.get_width() // 2, y + i * font.get_height()))
+            else:
+                surface.blit(text_surface, (x, y + i * font.get_height()))
     else:
         text_surface = font.render(text, True, color)
-        surface.blit(text_surface, (x, y))
+        if align == "center":
+            surface.blit(text_surface, (x - text_surface.get_width() // 2, y))
+        else:
+            surface.blit(text_surface, (x, y))
 
 
-def draw_health_bar(surface, x, y, hp, max_hp, width=200, height=20):
-    pygame.draw.rect(surface, DARK_GRAY, (x, y, width, height))
-    fill_width = int((hp / max_hp) * width) if max_hp > 0 else 0
-    pygame.draw.rect(surface, RED, (x, y, fill_width, height))
-    pygame.draw.rect(surface, WHITE, (x, y, width, height), 2)
+def draw_health_bar(surface, x, y, hp, max_hp, width=200, height=24, show_text=True):
+    # Background
+    bg_rect = pygame.Rect(x, y, width, height)
+    pygame.draw.rect(surface, DARK_GRAY, bg_rect, border_radius=4)
     
-    text = font_small.render(f"{hp}/{max_hp}", True, WHITE)
-    surface.blit(text, (x + width // 2 - text.get_width() // 2, y + 2))
+    # Health fill with gradient
+    if max_hp > 0:
+        fill_width = int((hp / max_hp) * (width - 4))
+        if fill_width > 0:
+            # Create gradient effect
+            for i in range(fill_width):
+                ratio = i / fill_width
+                if hp > max_hp * 0.5:
+                    r = int(GREEN[0] + (YELLOW[0] - GREEN[0]) * ratio * 2) if ratio < 0.5 else int(YELLOW[0] + (RED[0] - YELLOW[0]) * (ratio - 0.5) * 2)
+                    g = int(GREEN[1] + (YELLOW[1] - GREEN[1]) * ratio * 2) if ratio < 0.5 else int(YELLOW[1] + (RED[1] - YELLOW[1]) * (ratio - 0.5) * 2)
+                    b = int(GREEN[2] + (YELLOW[2] - GREEN[2]) * ratio * 2) if ratio < 0.5 else int(YELLOW[2] + (RED[2] - YELLOW[2]) * (ratio - 0.5) * 2)
+                else:
+                    r = int(RED[0] * 0.7 + 100 * ratio)
+                    g = int(RED[1] * 0.7 + 50 * ratio)
+                    b = int(RED[2] * 0.7 + 50 * ratio)
+                pygame.draw.line(surface, (r, g, b), (x + 2 + i, y + 2), (x + 2 + i, y + height - 2))
+    
+    # Border
+    border_color = WHITE if hp > max_hp * 0.3 else RED
+    pygame.draw.rect(surface, border_color, bg_rect, 2, border_radius=4)
+    
+    # HP text
+    if show_text:
+        text = font_small.render(f"{hp}/{max_hp}", True, WHITE)
+        surface.blit(text, (x + width // 2 - text.get_width() // 2, y + 3))
+    
+    # Add small decorative corners
+    pygame.draw.circle(surface, GOLD, (x + 4, y + 4), 2)
+    pygame.draw.circle(surface, GOLD, (x + width - 4, y + 4), 2)
+    pygame.draw.circle(surface, GOLD, (x + 4, y + height - 4), 2)
+    pygame.draw.circle(surface, GOLD, (x + width - 4, y + height - 4), 2)
+
+
+def draw_entity_sprite(surface, x, y, sprite_type, name, hp, max_hp, size=80):
+    # Draw the sprite area background
+    sprite_bg = pygame.Rect(x - size//2 - 10, y - size//2 - 30, size + 20, size + 60)
+    pygame.draw.rect(surface, DARK_GRAY, sprite_bg, border_radius=8)
+    pygame.draw.rect(surface, PURPLE, sprite_bg, 2, border_radius=8)
+    
+    # Draw ASCII art based on type
+    if sprite_type == "player":
+        lines = DUCK_SPRITE.strip().split('\n')
+    else:
+        lines = ENEMY_SPRITES.get(name, "").strip().split('\n') if name in ENEMY_SPRITES else ["???", "???"]
+    
+    line_height = 14
+    start_y = y - size//2 - 20
+    for i, line in enumerate(lines):
+        text = font_tiny.render(line, True, YELLOW if sprite_type == "player" else RED)
+        surface.blit(text, (x - text.get_width() // 2, start_y + i * line_height))
+    
+    # Draw name
+    name_text = font_small.render(name, True, WHITE)
+    surface.blit(name_text, (x - name_text.get_width() // 2, y + size//2 - 10))
+    
+    # Draw health bar below
+    draw_health_bar(surface, x - 80, y + size//2 + 5, hp, max_hp, 160, 16)
+
+
+def draw_battle_scene(surface, game, center_x, center_y):
+    enemy = game.get_current_enemy()
+    
+    # Draw battle background with animated elements
+    battle_bg = pygame.Rect(50, 140, WIDTH - 100, 350)
+    pygame.draw.rect(surface, (20, 20, 40), battle_bg, border_radius=12)
+    pygame.draw.rect(surface, PURPLE, battle_bg, 3, border_radius=12)
+    
+    # Draw floor indicator
+    pygame.draw.line(surface, (80, 80, 100), (80, 480), (WIDTH - 80, 480), 2)
+    
+    if enemy:
+        # Enemy position with slight animation
+        enemy_x = center_x + 150
+        enemy_y = center_y - 30
+        
+        # Draw enemy with glow effect
+        for i in range(3):
+            glow_size = 100 + i * 10
+            glow_alpha = 30 - i * 10
+            glow_surf = pygame.Surface((glow_size, glow_size), pygame.SRCALPHA)
+            pygame.draw.circle(glow_surf, (*RED, glow_alpha), (glow_size//2, glow_size//2), glow_size//2)
+            surface.blit(glow_surf, (enemy_x - glow_size//2, enemy_y - glow_size//2))
+        
+        draw_entity_sprite(surface, enemy_x, enemy_y, "enemy", enemy.name, enemy.hp, enemy.max_hp)
+    
+    # Player position with animation
+    player_x = center_x - 150
+    player_y = center_y - 30
+    
+    # Draw player with glow effect
+    for i in range(3):
+        glow_size = 90 + i * 10
+        glow_alpha = 30 - i * 10
+        glow_surf = pygame.Surface((glow_size, glow_size), pygame.SRCALPHA)
+        pygame.draw.circle(glow_surf, (*YELLOW, glow_alpha), (glow_size//2, glow_size//2), glow_size//2)
+        surface.blit(glow_surf, (player_x - glow_size//2, player_y - glow_size//2))
+    
+    draw_entity_sprite(surface, player_x, player_y, "player", game.player.name, game.player.hp, game.player.max_hp)
+    
+    # VS indicator
+    vs_text = font_large.render("VS", True, WHITE)
+    pygame.draw.circle(surface, DARK_GRAY, (center_x, center_y + 20), 30)
+    pygame.draw.circle(surface, RED, (center_x, center_y + 20), 30, 2)
+    surface.blit(vs_text, (center_x - vs_text.get_width() // 2, center_y + 8))
+    
+    return player_y
 
 
 def draw_game(screen, game):
-    screen.fill(BLACK)
+    draw_gradient_background(screen)
     
-    pygame.draw.rect(screen, DARK_GRAY, (20, 20, WIDTH - 40, HEIGHT - 40), 3)
+    # Apply shake offset
+    shake = effects.get_shake_offset()
+    screen_copy = screen.copy()
     
-    title = font_title.render("RUBBER DUCK DEBUGGING: THE ROAST EDITION", True, YELLOW)
-    screen.blit(title, (WIDTH // 2 - title.get_width() // 2, 30))
+    # Title section with better styling
+    title = font_title.render("RUBBER DUCK DEBUGGING", True, YELLOW)
+    subtitle = font_large.render("THE ROAST EDITION", True, GOLD)
     
-    floor_text = font_large.render(f"Floor {game.floor}", True, GOLD)
-    screen.blit(floor_text, (WIDTH // 2 - floor_text.get_width() // 2, 90))
+    # Title background
+    title_bg = pygame.Rect(WIDTH//2 - 300, 10, 600, 70)
+    pygame.draw.rect(screen, DARK_GRAY, title_bg, border_radius=8)
+    pygame.draw.rect(screen, (60, 40, 80), title_bg, 2, border_radius=8)
     
-    enemy = game.get_current_enemy()
-    if enemy:
-        enemy_x = WIDTH // 2
-        enemy_y = 200
-        
-        emoji_size = 80
-        enemy_text = font_large.render(enemy.emoji, True, WHITE)
-        screen.blit(enemy_text, (enemy_x - enemy_text.get_width() // 2, enemy_y - 40))
-        
-        enemy_name = font_medium.render(enemy.name, True, WHITE)
-        screen.blit(enemy_name, (enemy_x - enemy_name.get_width() // 2, enemy_y + 50))
-        
-        draw_health_bar(screen, enemy_x - 100, enemy_y + 90, enemy.hp, enemy.max_hp, 200)
+    screen.blit(title, (WIDTH // 2 - title.get_width() // 2, 20))
+    screen.blit(subtitle, (WIDTH // 2 - subtitle.get_width() // 2, 60))
     
-    pygame.draw.line(screen, GRAY, (50, 180), (WIDTH - 50, 180), 2)
+    # Floor indicator with icon
+    floor_box = pygame.Rect(WIDTH - 180, 25, 160, 40)
+    pygame.draw.rect(screen, DARK_GRAY, floor_box, border_radius=6)
+    pygame.draw.rect(screen, CYAN, floor_box, 2, border_radius=6)
+    floor_text = font_medium.render(f"Floor {game.floor}", True, CYAN)
+    screen.blit(floor_text, (WIDTH - 170, 32))
     
-    duck_x = WIDTH // 2
-    duck_y = 450
+    # Turn indicator
+    turn_text = font_small.render(f"Turn: {game.roast_engine.turn_count}", True, LIGHT_GRAY)
+    screen.blit(turn_text, (30, 35))
     
-    duck_text = font_title.render("DUCK", True, YELLOW)
-    screen.blit(duck_text, (duck_x - duck_text.get_width() // 2, duck_y - 30))
+    # Draw battle scene
+    center_x = WIDTH // 2
+    center_y = 340
+    duck_y = draw_battle_scene(screen, game, center_x, center_y)
     
-    player_name = font_medium.render(game.player.name, True, WHITE)
-    screen.blit(player_name, (duck_x - player_name.get_width() // 2, duck_y + 40))
+    # Roast message panel - more prominent
+    roast_panel_y = 510
+    roast_panel = pygame.Rect(40, roast_panel_y, WIDTH - 80, 120)
+    pygame.draw.rect(screen, (25, 20, 45), roast_panel, border_radius=12)
+    pygame.draw.rect(screen, PURPLE, roast_panel, 3, border_radius=12)
     
-    draw_health_bar(screen, duck_x - 100, duck_y + 75, game.player.hp, game.player.max_hp, 200)
+    # Roast label with glow effect
+    roast_label = font_medium.render("THE ROAST", True, GOLD)
+    screen.blit(roast_label, (60, roast_panel_y + 10))
     
-    actions_text = font_small.render(f"Actions: {game.player.actions_per_turn - game.player.actions_used}/{game.player.actions_per_turn}", True, WHITE)
-    screen.blit(actions_text, (duck_x - actions_text.get_width() // 2, duck_y + 105))
+    # Decorative quote marks
+    quote_font = font_title
+    screen.blit(quote_font.render('"', True, PURPLE), (45, roast_panel_y + 5))
+    screen.blit(quote_font.render('"', True, PURPLE), (WIDTH - 60, roast_panel_y + 50))
     
-    pygame.draw.line(screen, GRAY, (50, 600), (WIDTH - 50, 600), 2)
+    # Roast message with typewriter effect feel
+    draw_text(screen, game.roast_message, 60, roast_panel_y + 40, font_medium, WHITE, WIDTH - 150)
     
-    roast_bg = pygame.Rect(50, 610, WIDTH - 100, 80)
-    pygame.draw.rect(screen, PURPLE, roast_bg)
-    pygame.draw.rect(screen, GOLD, roast_bg, 3)
+    # Action feedback indicator
+    action_hint = font_small.render("Press 1-7 to attack | ENTER to end turn | U for upgrades | H to heal", True, (120, 120, 140))
+    screen.blit(action_hint, (WIDTH // 2 - action_hint.get_width() // 2, roast_panel_y + 95))
     
-    roast_label = font_small.render("THE ROAST:", True, GOLD)
-    screen.blit(roast_label, (60, 615))
+    # Stats bar at bottom
+    stats_panel = pygame.Rect(40, 650, WIDTH - 80, 60)
+    pygame.draw.rect(screen, DARK_GRAY, stats_panel, border_radius=8)
+    pygame.draw.rect(screen, (50, 50, 70), stats_panel, 2, border_radius=8)
     
-    draw_text(screen, game.roast_message, 60, 640, font_small, WHITE, WIDTH - 140)
+    # Stats with icons
+    stats = [
+        (f"{game.player.gold}", GOLD, "Gold"),
+        (f"{int(game.player.xp)}", CYAN, "XP"),
+        (f"Lv {game.player.level}", GREEN, "Level"),
+        (f"{game.score}", WHITE, "Score"),
+        (f"{game.high_score}", RED, "Best"),
+    ]
     
-    stats_x = 50
-    stats_y = 710
+    for i, (value, color, label) in enumerate(stats):
+        x = 80 + i * 200
+        label_text = font_small.render(label, True, (100, 100, 120))
+        screen.blit(label_text, (x, 660))
+        value_text = font_large.render(value, True, color)
+        screen.blit(value_text, (x, 680))
     
-    stats_text = f"Gold: {game.player.gold}  |  XP: {int(game.player.xp)}  |  Score: {game.score}  |  High Score: {game.high_score}"
-    draw_text(screen, stats_text, stats_x, stats_y, font_small, GOLD)
+    # Draw visual effects
+    effects.draw(screen)
     
     return duck_y
 
 
 def draw_menu(screen):
-    screen.fill(BLACK)
+    draw_gradient_background(screen)
+    
+    # Title with glow effect
+    for i in range(5):
+        glow_surface = pygame.Surface((600, 120), pygame.SRCALPHA)
+        alpha = 40 - i * 8
+        pygame.draw.rect(glow_surface, (*YELLOW, alpha), (0, 0, 600, 120), border_radius=20)
+        screen.blit(glow_surface, (WIDTH//2 - 300, 120))
+    
+    title_box = pygame.Rect(WIDTH//2 - 280, 130, 560, 100)
+    pygame.draw.rect(screen, DARK_GRAY, title_box, border_radius=12)
+    pygame.draw.rect(screen, YELLOW, title_box, 3, border_radius=12)
     
     title = font_title.render("RUBBER DUCK DEBUGGING", True, YELLOW)
     screen.blit(title, (WIDTH // 2 - title.get_width() // 2, 150))
     
     subtitle = font_large.render("THE ROAST EDITION", True, GOLD)
-    screen.blit(subtitle, (WIDTH // 2 - subtitle.get_width() // 2, 220))
+    screen.blit(subtitle, (WIDTH // 2 - subtitle.get_width() // 2, 200))
     
-    duck = font_title.render("DUCK " * 5, True, YELLOW)
-    screen.blit(duck, (WIDTH // 2 - duck.get_width() // 2, 300))
+    # Duck sprite display
+    duck_box = pygame.Rect(WIDTH//2 - 100, 280, 200, 120)
+    pygame.draw.rect(screen, (30, 30, 50), duck_box, border_radius=10)
+    pygame.draw.rect(screen, YELLOW, duck_box, 2, border_radius=10)
     
-    start_text = font_medium.render("Press ENTER to Start", True, GREEN)
-    screen.blit(start_text, (WIDTH // 2 - start_text.get_width() // 2, 450))
+    lines = DUCK_SPRITE.strip().split('\n')
+    for i, line in enumerate(lines):
+        text = font_tiny.render(line, True, YELLOW)
+        screen.blit(text, (WIDTH//2 - text.get_width()//2, 300 + i * 16))
     
-    high_text = font_medium.render(f"High Score: 0", True, GOLD)
-    screen.blit(high_text, (WIDTH // 2 - high_text.get_width() // 2, 520))
+    # Start button with animation hint
+    start_text = font_large.render("Press ENTER to Start", True, GREEN)
+    screen.blit(start_text, (WIDTH // 2 - start_text.get_width() // 2, 430))
+    
+    # High score
+    high_box = pygame.Rect(WIDTH//2 - 120, 480, 240, 40)
+    pygame.draw.rect(screen, DARK_GRAY, high_box, border_radius=6)
+    high_text = font_medium.render(f"High Score: {game.high_score}", True, GOLD)
+    screen.blit(high_text, (WIDTH // 2 - high_text.get_width() // 2, 490))
+    
+    # Instructions panel
+    instr_panel = pygame.Rect(WIDTH//2 - 200, 540, 400, 180)
+    pygame.draw.rect(screen, (30, 30, 50), instr_panel, border_radius=10)
+    pygame.draw.rect(screen, PURPLE, instr_panel, 2, border_radius=10)
     
     instructions = [
-        "CONTROLS:",
-        "1-5: Select attack",
-        "U: Open upgrade shop",
-        "H: Heal (30 gold)",
-        "ENTER: End turn",
-        "",
-        "Goal: Defeat the Legacy Code Boss on Floor 5!"
+        ("CONTROLS", YELLOW),
+        ("1-7: Select attack", WHITE),
+        ("U: Upgrade shop", WHITE),
+        ("H: Heal (30 gold)", WHITE),
+        ("ENTER: End turn", WHITE),
+        ("", GRAY),
+        ("Goal: Beat the Legacy Code Boss!", RED),
     ]
     
-    for i, line in enumerate(instructions):
-        text = font_small.render(line, True, WHITE)
-        screen.blit(text, (WIDTH // 2 - text.get_width() // 2, 580 + i * 30))
+    for i, (text, color) in enumerate(instructions):
+        font = font_medium if i == 0 else font_small
+        rendered = font.render(text, True, color)
+        screen.blit(rendered, (WIDTH//2 - rendered.get_width()//2, 555 + i * 24))
 
 
 def draw_attack_menu(screen, game, duck_y):
-    menu_x = WIDTH - 250
-    menu_y = duck_y + 130
+    menu_x = WIDTH - 280
+    menu_y = duck_y + 140
     
-    pygame.draw.rect(screen, DARK_GRAY, (menu_x, menu_y, 230, 250))
-    pygame.draw.rect(screen, WHITE, (menu_x, menu_y, 230, 250), 2)
+    # Menu panel
+    menu_width = 260
+    menu_height = 320
+    menu_bg = pygame.Rect(menu_x, menu_y, menu_width, menu_height)
+    pygame.draw.rect(screen, DARK_GRAY, menu_bg, border_radius=10)
+    pygame.draw.rect(screen, CYAN, menu_bg, 2, border_radius=10)
     
-    title = font_small.render("ATTACKS:", True, YELLOW)
-    screen.blit(title, (menu_x + 10, menu_y + 10))
+    # Title with keyboard hint style
+    title = font_medium.render("ATTACKS", True, YELLOW)
+    screen.blit(title, (menu_x + 15, menu_y + 10))
     
+    # Attack list with keyboard indicators
     for i, (name, attack) in enumerate(game.player.attacks.items()):
         key = str(i + 1)
-        color = WHITE if game.player.can_act() else GRAY
-        text = f"{key}: {name} ({attack['damage']}dmg, {attack['accuracy']}%acc)"
-        draw_text(screen, text, menu_x + 10, menu_y + 35 + i * 30, font_small, color, 210)
+        can_use = game.player.can_act()
+        color = WHITE if can_use else GRAY
+        
+        # Key indicator box
+        key_box = pygame.Rect(menu_x + 10, menu_y + 40 + i * 35, 28, 28)
+        key_bg = PURPLE if can_use else DARK_GRAY
+        pygame.draw.rect(screen, key_bg, key_box, border_radius=4)
+        pygame.draw.rect(screen, WHITE if can_use else GRAY, key_box, 1, border_radius=4)
+        key_text = font_small.render(key, True, WHITE if can_use else GRAY)
+        screen.blit(key_text, (menu_x + 16, menu_y + 45))
+        
+        # Attack name and stats
+        atk_text = f"{name}"
+        atk_render = font_small.render(atk_text, True, color)
+        screen.blit(atk_render, (menu_x + 45, menu_y + 42))
+        
+        # Damage/accuracy info
+        info_text = f"{attack['damage']}dmg | {attack['accuracy']}%acc"
+        info_render = font_tiny.render(info_text, True, (120, 120, 140))
+        screen.blit(info_render, (menu_x + 45, menu_y + 56))
     
-    y_extra = menu_y + 35 + len(game.player.attacks) * 30 + 10
-    screen.blit(font_small.render("U: Upgrade Shop", True, GOLD if game.player.gold >= 30 else GRAY), (menu_x + 10, y_extra))
-    screen.blit(font_small.render("H: Heal (30g)", True, GREEN if game.player.gold >= 30 else GRAY), (menu_x + 10, y_extra + 25))
-    screen.blit(font_small.render("ENTER: End Turn", True, BLUE), (menu_x + 10, y_extra + 50))
+    # Actions section
+    actions_y = menu_y + 40 + len(game.player.attacks) * 35 + 20
+    
+    # End turn indicator
+    enter_box = pygame.Rect(menu_x + 10, actions_y, menu_width - 20, 30)
+    pygame.draw.rect(screen, DARK_GREEN, enter_box, border_radius=4)
+    pygame.draw.rect(screen, GREEN, enter_box, 1, border_radius=4)
+    enter_text = font_small.render("ENTER: End Turn", True, WHITE)
+    screen.blit(enter_text, (menu_x + 20, actions_y + 6))
+    
+    # Upgrade and heal
+    pygame.draw.rect(screen, PURPLE, (menu_x + 10, actions_y + 35, 110, 24), border_radius=4)
+    pygame.draw.rect(screen, GOLD, (menu_x + 130, actions_y + 35, 110, 24), border_radius=4)
+    
+    u_text = font_small.render("U: Upgrades", True, WHITE)
+    h_text = font_small.render("H: Heal", True, WHITE)
+    screen.blit(u_text, (menu_x + 18, actions_y + 38))
+    screen.blit(h_text, (menu_x + 145, actions_y + 38))
+    
+    # Actions remaining indicator
+    actions_left = game.player.actions_per_turn - game.player.actions_used
+    actions_box = pygame.Rect(menu_x + 10, menu_y + menu_height - 35, menu_width - 20, 25)
+    pygame.draw.rect(screen, (30, 30, 45), actions_box, border_radius=4)
+    
+    actions_text = font_small.render(f"Actions: {actions_left}/{game.player.actions_per_turn}", True, GREEN if actions_left > 0 else RED)
+    screen.blit(actions_text, (menu_x + 20, menu_y + menu_height - 30))
 
 
 def draw_upgrade_shop(screen, game):
+    # Dark overlay
     overlay = pygame.Surface((WIDTH, HEIGHT))
     overlay.set_alpha(200)
     overlay.fill(BLACK)
     screen.blit(overlay, (0, 0))
     
-    shop_rect = pygame.Rect(200, 100, WIDTH - 400, HEIGHT - 200)
-    pygame.draw.rect(screen, DARK_GRAY, shop_rect)
-    pygame.draw.rect(screen, GOLD, shop_rect, 4)
+    # Shop panel
+    shop_rect = pygame.Rect(150, 60, WIDTH - 300, HEIGHT - 120)
+    pygame.draw.rect(screen, (20, 20, 40), shop_rect, border_radius=16)
+    pygame.draw.rect(screen, GOLD, shop_rect, 4, border_radius=16)
     
-    title = font_large.render("UPGRADE SHOP", True, YELLOW)
-    screen.blit(title, (WIDTH // 2 - title.get_width() // 2, 120))
+    # Title with decorative elements
+    title = font_title.render("UPGRADE SHOP", True, YELLOW)
+    screen.blit(title, (WIDTH // 2 - title.get_width() // 2, 80))
     
-    gold_text = font_medium.render(f"Your Gold: {game.player.gold}", True, GOLD)
-    screen.blit(gold_text, (WIDTH // 2 - gold_text.get_width() // 2, 170))
+    # Gold display
+    gold_box = pygame.Rect(WIDTH//2 - 80, 130, 160, 40)
+    pygame.draw.rect(screen, DARK_GRAY, gold_box, border_radius=6)
+    pygame.draw.rect(screen, GOLD, gold_box, 2, border_radius=6)
+    gold_text = font_medium.render(f"{game.player.gold} Gold", True, GOLD)
+    screen.blit(gold_text, (WIDTH // 2 - gold_text.get_width() // 2, 140))
     
-    for i, (name, upgrade) in enumerate(game.player.upgrades.items()):
-        x = 250 + (i % 3) * 280
-        y = 230 + (i // 3) * 120
+    # Upgrade cards in a grid
+    upgrades = list(game.player.upgrades.items())
+    cols = 3
+    for i, (name, upgrade) in enumerate(upgrades):
+        col = i % cols
+        row = i // cols
+        x = 200 + col * 300
+        y = 200 + row * 130
         
-        card = pygame.Rect(x, y, 250, 100)
-        pygame.draw.rect(screen, PURPLE, card)
-        pygame.draw.rect(screen, WHITE, card, 2)
+        # Card background
+        card = pygame.Rect(x, y, 270, 115)
+        can_afford = game.player.gold >= upgrade["cost"]
+        card_color = (40, 40, 60) if can_afford else (30, 30, 40)
+        pygame.draw.rect(screen, card_color, card, border_radius=8)
         
-        name_text = font_small.render(name, True, YELLOW)
-        screen.blit(name_text, (x + 10, y + 10))
+        border_color = GOLD if can_afford else RED
+        pygame.draw.rect(screen, border_color, card, 2, border_radius=8)
         
-        desc = font_small.render(upgrade["description"], True, WHITE)
-        screen.blit(desc, (x + 10, y + 35))
+        # Upgrade name
+        name_text = font_medium.render(name, True, YELLOW if can_afford else GRAY)
+        screen.blit(name_text, (x + 15, y + 10))
         
-        cost_color = GOLD if game.player.gold >= upgrade["cost"] else RED
-        cost_text = font_small.render(f"Cost: {upgrade['cost']}g", True, cost_color)
-        screen.blit(cost_text, (x + 10, y + 60))
+        # Description
+        desc_text = font_small.render(upgrade["description"], True, WHITE if can_afford else GRAY)
+        screen.blit(desc_text, (x + 15, y + 40))
         
-        key_text = font_small.render(f"[{i + 1}]", True, WHITE)
-        screen.blit(key_text, (x + 180, y + 75))
+        # Cost
+        cost_color = GREEN if can_afford else RED
+        cost_text = font_medium.render(f"{upgrade['cost']}g", True, cost_color)
+        screen.blit(cost_text, (x + 15, y + 70))
+        
+        # Key hint
+        key_hint = font_small.render(f"[{i+1}]", True, (100, 100, 120))
+        screen.blit(key_hint, (x + 200, y + 85))
     
-    exit_text = font_medium.render("Press ESC to close", True, WHITE)
-    screen.blit(exit_text, (WIDTH // 2 - exit_text.get_width() // 2, HEIGHT - 130))
+    # Exit hint
+    exit_box = pygame.Rect(WIDTH//2 - 120, HEIGHT - 100, 240, 40)
+    pygame.draw.rect(screen, DARK_GRAY, exit_box, border_radius=6)
+    pygame.draw.rect(screen, WHITE, exit_box, 1, border_radius=6)
+    exit_text = font_medium.render("ESC to close", True, WHITE)
+    screen.blit(exit_text, (WIDTH // 2 - exit_text.get_width() // 2, HEIGHT - 90))
 
 
 def main():
     game = Game()
     running = True
     shop_open = False
+    global effects
+    effects = VisualEffects()  # Reset effects
     
     while running:
+        # Update visual effects every frame
+        effects.update()
+        
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
@@ -792,32 +1271,72 @@ def main():
             if shop_open:
                 draw_upgrade_shop(screen, game)
         elif game.game_state == "victory":
-            screen.fill(BLACK)
+            draw_gradient_background(screen)
+            
+            # Victory panel
+            victory_box = pygame.Rect(WIDTH//2 - 250, 150, 500, 400)
+            pygame.draw.rect(screen, DARK_GRAY, victory_box, border_radius=20)
+            pygame.draw.rect(screen, GOLD, victory_box, 4, border_radius=20)
+            
+            # Victory text with glow
+            for i in range(3):
+                glow = font_title.render("VICTORY!", True, (*GOLD, 100 - i * 30))
+                screen.blit(glow, (WIDTH // 2 - glow.get_width() // 2 + (i-1)*2, 180 + (i-1)*2))
+            
             win_text = font_title.render("VICTORY!", True, GOLD)
-            screen.blit(win_text, (WIDTH // 2 - win_text.get_width() // 2, 200))
+            screen.blit(win_text, (WIDTH // 2 - win_text.get_width() // 2, 180))
             
-            score_text = font_large.render(f"Final Score: {game.score}", True, WHITE)
-            screen.blit(score_text, (WIDTH // 2 - score_text.get_width() // 2, 350))
+            # Score display
+            score_box = pygame.Rect(WIDTH//2 - 150, 280, 300, 80)
+            pygame.draw.rect(screen, (30, 30, 50), score_box, border_radius=10)
+            score_label = font_medium.render("Final Score", True, LIGHT_GRAY)
+            screen.blit(score_label, (WIDTH // 2 - score_label.get_width() // 2, 295))
+            score_text = font_large.render(f"{game.score}", True, WHITE)
+            screen.blit(score_text, (WIDTH // 2 - score_text.get_width() // 2, 325))
             
+            # Roast message
+            roast_box = pygame.Rect(WIDTH//2 - 200, 380, 400, 60)
+            pygame.draw.rect(screen, PURPLE, roast_box, border_radius=8)
             roast_text = font_medium.render(game.roast_message, True, YELLOW)
-            screen.blit(roast_text, (WIDTH // 2 - roast_text.get_width() // 2, 450))
+            screen.blit(roast_text, (WIDTH // 2 - roast_text.get_width() // 2, 400))
             
-            restart_text = font_medium.render("Press ENTER to play again", True, GREEN)
-            screen.blit(restart_text, (WIDTH // 2 - restart_text.get_width() // 2, 550))
+            # Restart hint
+            restart_box = pygame.Rect(WIDTH//2 - 150, 480, 300, 50)
+            pygame.draw.rect(screen, DARK_GREEN, restart_box, border_radius=8)
+            restart_text = font_medium.render("Press ENTER to play again", True, WHITE)
+            screen.blit(restart_text, (WIDTH // 2 - restart_text.get_width() // 2, 495))
         
         elif game.game_state == "defeat":
-            screen.fill(BLACK)
+            draw_gradient_background(screen)
+            
+            # Defeat panel
+            defeat_box = pygame.Rect(WIDTH//2 - 250, 150, 500, 400)
+            pygame.draw.rect(screen, DARK_GRAY, defeat_box, border_radius=20)
+            pygame.draw.rect(screen, DARK_RED, defeat_box, 4, border_radius=20)
+            
+            # Defeat text
             lose_text = font_title.render("GAME OVER", True, RED)
-            screen.blit(lose_text, (WIDTH // 2 - lose_text.get_width() // 2, 200))
+            screen.blit(lose_text, (WIDTH // 2 - lose_text.get_width() // 2, 180))
             
-            score_text = font_large.render(f"Score: {game.score}", True, WHITE)
-            screen.blit(score_text, (WIDTH // 2 - score_text.get_width() // 2, 350))
+            # Score display
+            score_box = pygame.Rect(WIDTH//2 - 150, 280, 300, 80)
+            pygame.draw.rect(screen, (40, 20, 20), score_box, border_radius=10)
+            score_label = font_medium.render("Score", True, LIGHT_GRAY)
+            screen.blit(score_label, (WIDTH // 2 - score_label.get_width() // 2, 295))
+            score_text = font_large.render(f"{game.score}", True, WHITE)
+            screen.blit(score_text, (WIDTH // 2 - score_text.get_width() // 2, 325))
             
+            # Roast message
+            roast_box = pygame.Rect(WIDTH//2 - 200, 380, 400, 60)
+            pygame.draw.rect(screen, (60, 30, 30), roast_box, border_radius=8)
             roast_text = font_medium.render(game.roast_message, True, YELLOW)
-            screen.blit(roast_text, (WIDTH // 2 - roast_text.get_width() // 2, 450))
+            screen.blit(roast_text, (WIDTH // 2 - roast_text.get_width() // 2, 400))
             
-            restart_text = font_medium.render("Press ENTER to try again", True, GREEN)
-            screen.blit(restart_text, (WIDTH // 2 - restart_text.get_width() // 2, 550))
+            # Restart hint
+            restart_box = pygame.Rect(WIDTH//2 - 150, 480, 300, 50)
+            pygame.draw.rect(screen, DARK_GREEN, restart_box, border_radius=8)
+            restart_text = font_medium.render("Press ENTER to try again", True, WHITE)
+            screen.blit(restart_text, (WIDTH // 2 - restart_text.get_width() // 2, 495))
         
         pygame.display.flip()
         clock.tick(30)
