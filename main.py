@@ -1043,90 +1043,204 @@ def draw_menu(screen, game):
     start_text = font_large.render("Press ENTER to Start", True, GREEN)
     screen.blit(start_text, (WIDTH // 2 - start_text.get_width() // 2, 430))
     
+    # How to Play button
+    howto_box = pygame.Rect(WIDTH//2 - 80, 480, 160, 40)
+    pygame.draw.rect(screen, (60, 40, 80), howto_box, border_radius=8)
+    pygame.draw.rect(screen, PURPLE, howto_box, 2, border_radius=8)
+    howto_text = font_medium.render("HOW TO PLAY", True, WHITE)
+    screen.blit(howto_text, (WIDTH//2 - howto_text.get_width()//2, 490))
+    
     # High score
-    high_box = pygame.Rect(WIDTH//2 - 120, 480, 240, 40)
+    high_box = pygame.Rect(WIDTH//2 - 120, 540, 240, 35)
     pygame.draw.rect(screen, DARK_GRAY, high_box, border_radius=6)
-    high_text = font_medium.render(f"High Score: {game.high_score}", True, GOLD)
-    screen.blit(high_text, (WIDTH // 2 - high_text.get_width() // 2, 490))
+    high_text = font_small.render(f"High Score: {game.high_score}", True, GOLD)
+    screen.blit(high_text, (WIDTH // 2 - high_text.get_width() // 2, 550))
+
+
+def draw_how_to_play(screen):
+    draw_gradient_background(screen)
     
-    # Instructions panel
-    instr_panel = pygame.Rect(WIDTH//2 - 200, 540, 400, 180)
-    pygame.draw.rect(screen, (30, 30, 50), instr_panel, border_radius=10)
-    pygame.draw.rect(screen, PURPLE, instr_panel, 2, border_radius=10)
+    # Title
+    title = font_title.render("HOW TO PLAY", True, YELLOW)
+    screen.blit(title, (WIDTH // 2 - title.get_width() // 2, 50))
     
-    instructions = [
-        ("CONTROLS", YELLOW),
-        ("1-7: Select attack", WHITE),
-        ("U: Upgrade shop", WHITE),
-        ("H: Heal (30 gold)", WHITE),
-        ("ENTER: End turn", WHITE),
-        ("", GRAY),
-        ("Goal: Beat the Legacy Code Boss!", RED),
+    # Back hint
+    back_text = font_medium.render("Press H to go back", True, CYAN)
+    screen.blit(back_text, (WIDTH // 2 - back_text.get_width() // 2, 100))
+    
+    # Left panel - Gameplay
+    left_panel = pygame.Rect(50, 150, 500, 550)
+    pygame.draw.rect(screen, (20, 20, 35), left_panel, border_radius=15)
+    pygame.draw.rect(screen, CYAN, left_panel, 3, border_radius=15)
+    
+    left_title = font_large.render("GAMEPLAY", True, YELLOW)
+    screen.blit(left_title, (70, 165))
+    
+    gameplay_info = [
+        ("OBJECTIVE", GOLD),
+        ("Defeat the Legacy Code Boss on Floor 5!", WHITE),
+        ("", None),
+        ("COMBAT", GOLD),
+        ("- You have 2 actions per turn", WHITE),
+        ("- Use attacks to damage bugs", WHITE),
+        ("- Each bug has HP, Attack & Defense", WHITE),
+        ("- Defeat all bugs to advance floors", WHITE),
+        ("- Boss appears every 5 floors", WHITE),
+        ("", None),
+        ("UPGRADES", GOLD),
+        ("- Earn gold by defeating enemies", WHITE),
+        ("- Buy upgrades between battles", WHITE),
+        ("- Upgrades boost attack, defense, HP", WHITE),
+        ("", None),
+        ("TIPS", GOLD),
+        ("- Watch your HP - it doesn't auto-heal", WHITE),
+        ("- Heal costs 30 gold when needed", WHITE),
+        ("- Prioritize upgrades that match your style", WHITE),
     ]
     
-    for i, (text, color) in enumerate(instructions):
-        font = font_medium if i == 0 else font_small
-        rendered = font.render(text, True, color)
-        screen.blit(rendered, (WIDTH//2 - rendered.get_width()//2, 555 + i * 24))
+    y = 210
+    for item in gameplay_info:
+        if item[1] is None:
+            y += 15
+        elif item[0] in ("OBJECTIVE", "COMBAT", "UPGRADES", "TIPS"):
+            font = font_medium
+            y += 10
+        else:
+            font = font_small
+        rendered = font.render(item[0], True, item[1] if item[1] else WHITE)
+        screen.blit(rendered, (70, y))
+        y += 28 if item[0] in ("OBJECTIVE", "COMBAT", "UPGRADES", "TIPS") else 22
+    
+    # Right panel - Controls
+    right_panel = pygame.Rect(580, 150, 550, 550)
+    pygame.draw.rect(screen, (20, 20, 35), right_panel, border_radius=15)
+    pygame.draw.rect(screen, PURPLE, right_panel, 3, border_radius=15)
+    
+    right_title = font_large.render("CONTROLS", True, YELLOW)
+    screen.blit(right_title, (600, 165))
+    
+    controls_info = [
+        ("KEY", WHITE),
+        ("1-7", CYAN),
+        ("Use attack (number = attack slot)", GRAY),
+        ("", None),
+        ("KEY", WHITE),
+        ("ENTER", CYAN),
+        ("End your turn / Start game", GRAY),
+        ("", None),
+        ("KEY", WHITE),
+        ("U", CYAN),
+        ("Open upgrade shop", GRAY),
+        ("", None),
+        ("KEY", WHITE),
+        ("H", CYAN),
+        ("Heal 40 HP (costs 30 gold)", GRAY),
+        ("", None),
+        ("KEY", WHITE),
+        ("ESC", CYAN),
+        ("Close upgrade shop", GRAY),
+        ("", None),
+        ("KEY", WHITE),
+        ("1-7 (in shop)", CYAN),
+        ("Buy upgrade (number = upgrade slot)", GRAY),
+    ]
+    
+    y = 210
+    for item in controls_info:
+        if item[1] is None:
+            y += 15
+        elif item[0] == "KEY":
+            label = font_small.render(item[0], True, (100, 100, 100))
+            screen.blit(label, (620, y))
+            y += 20
+        else:
+            key = font_medium.render(item[0], True, item[1])
+            screen.blit(key, (620, y))
+            desc = font_small.render(item[2], True, item[2])
+            screen.blit(desc, (700, y + 3))
+            y += 30
 
 
 def draw_attack_menu(screen, game, duck_y):
-    menu_x = WIDTH - 280
-    menu_y = duck_y + 140
+    menu_x = WIDTH - 300
+    menu_y = max(150, duck_y - 100)
     
-    # Menu panel
-    menu_width = 260
-    menu_height = 320
+    # Menu panel - bigger and more readable
+    menu_width = 280
+    menu_height = 450
     menu_bg = pygame.Rect(menu_x, menu_y, menu_width, menu_height)
-    pygame.draw.rect(screen, DARK_GRAY, menu_bg, border_radius=10)
-    pygame.draw.rect(screen, CYAN, menu_bg, 2, border_radius=10)
+    pygame.draw.rect(screen, (20, 20, 35), menu_bg, border_radius=15)
+    pygame.draw.rect(screen, CYAN, menu_bg, 3, border_radius=15)
     
     # Title with keyboard hint style
-    title = font_medium.render("ATTACKS", True, YELLOW)
-    screen.blit(title, (menu_x + 15, menu_y + 10))
+    title = font_large.render("ATTACKS", True, YELLOW)
+    screen.blit(title, (menu_x + 20, menu_y + 15))
+    
+    # Actions remaining
+    actions_left = game.player.actions_per_turn - game.player.actions_used
+    actions_text = font_medium.render(f"Actions: {actions_left}/{game.player.actions_per_turn}", True, GREEN if actions_left > 0 else RED)
+    screen.blit(actions_text, (menu_x + 20, menu_y + 50))
     
     # Attack list with keyboard indicators
+    y_offset = 90
     for i, (name, attack) in enumerate(game.player.attacks.items()):
         key = str(i + 1)
         can_use = game.player.can_act()
-        color = WHITE if can_use else GRAY
         
-        # Key indicator box
-        key_box = pygame.Rect(menu_x + 10, menu_y + 40 + i * 35, 28, 28)
-        key_bg = PURPLE if can_use else DARK_GRAY
-        pygame.draw.rect(screen, key_bg, key_box, border_radius=4)
-        pygame.draw.rect(screen, WHITE if can_use else GRAY, key_box, 1, border_radius=4)
-        key_text = font_small.render(key, True, WHITE if can_use else GRAY)
-        screen.blit(key_text, (menu_x + 16, menu_y + 45))
+        # Row background
+        row_bg = pygame.Rect(menu_x + 10, menu_y + y_offset, menu_width - 20, 50)
+        bg_color = (40, 40, 60) if can_use else (25, 25, 30)
+        pygame.draw.rect(screen, bg_color, row_bg, border_radius=8)
         
-        # Attack name and stats
+        # Key indicator box - bigger
+        key_box = pygame.Rect(menu_x + 20, menu_y + y_offset + 10, 36, 36)
+        key_bg = PURPLE if can_use else (50, 50, 50)
+        pygame.draw.rect(screen, key_bg, key_box, border_radius=6)
+        pygame.draw.rect(screen, WHITE if can_use else GRAY, key_box, 2, border_radius=6)
+        key_text = font_medium.render(key, True, WHITE if can_use else GRAY)
+        screen.blit(key_text, (menu_x + 26, menu_y + y_offset + 15))
+        
+        # Attack name - bigger font
         atk_text = f"{name}"
-        atk_render = font_small.render(atk_text, True, color)
-        screen.blit(atk_render, (menu_x + 45, menu_y + 42))
+        atk_render = font_medium.render(atk_text, True, WHITE if can_use else GRAY)
+        screen.blit(atk_render, (menu_x + 70, menu_y + y_offset + 5))
         
-        # Damage/accuracy info
-        info_text = f"{attack['damage']}dmg | {attack['accuracy']}%acc"
-        info_render = font_tiny.render(info_text, True, (120, 120, 140))
-        screen.blit(info_render, (menu_x + 45, menu_y + 56))
+        # Damage/accuracy info - more visible
+        info_text = f"{attack['damage']} DMG  |  {attack['accuracy']}% ACC"
+        info_render = font_small.render(info_text, True, CYAN if can_use else GRAY)
+        screen.blit(info_render, (menu_x + 70, menu_y + y_offset + 28))
+        
+        y_offset += 58
     
     # Actions section
-    actions_y = menu_y + 40 + len(game.player.attacks) * 35 + 20
+    actions_y = menu_y + y_offset + 10
     
-    # End turn indicator
-    enter_box = pygame.Rect(menu_x + 10, actions_y, menu_width - 20, 30)
-    pygame.draw.rect(screen, DARK_GREEN, enter_box, border_radius=4)
-    pygame.draw.rect(screen, GREEN, enter_box, 1, border_radius=4)
-    enter_text = font_small.render("ENTER: End Turn", True, WHITE)
-    screen.blit(enter_text, (menu_x + 20, actions_y + 6))
+    # Divider
+    pygame.draw.line(screen, GRAY, (menu_x + 20, actions_y), (menu_x + menu_width - 20, actions_y), 2)
+    actions_y += 15
     
-    # Upgrade and heal
-    pygame.draw.rect(screen, PURPLE, (menu_x + 10, actions_y + 35, 110, 24), border_radius=4)
-    pygame.draw.rect(screen, GOLD, (menu_x + 130, actions_y + 35, 110, 24), border_radius=4)
+    # End turn indicator - bigger button
+    enter_box = pygame.Rect(menu_x + 10, actions_y, menu_width - 20, 40)
+    pygame.draw.rect(screen, (30, 80, 30), enter_box, border_radius=8)
+    pygame.draw.rect(screen, GREEN, enter_box, 2, border_radius=8)
+    enter_text = font_medium.render("[ENTER] End Turn", True, WHITE)
+    screen.blit(enter_text, (menu_x + 30, actions_y + 8))
     
-    u_text = font_small.render("U: Upgrades", True, WHITE)
-    h_text = font_small.render("H: Heal", True, WHITE)
-    screen.blit(u_text, (menu_x + 18, actions_y + 38))
-    screen.blit(h_text, (menu_x + 145, actions_y + 38))
+    # Upgrade and heal - bigger buttons
+    pygame.draw.rect(screen, (80, 40, 80), (menu_x + 10, actions_y + 50, 125, 35), border_radius=6)
+    pygame.draw.rect(screen, PURPLE, (menu_x + 10, actions_y + 50, 125, 35), 2, border_radius=6)
+    
+    pygame.draw.rect(screen, (40, 80, 40), (menu_x + 145, actions_y + 50, 125, 35), border_radius=6)
+    pygame.draw.rect(screen, GREEN, (menu_x + 145, actions_y + 50, 125, 35), 2, border_radius=6)
+    
+    u_text = font_medium.render("[U] Upgrades", True, WHITE)
+    h_text = font_medium.render("[H] Heal", True, WHITE)
+    screen.blit(u_text, (menu_x + 20, actions_y + 55))
+    screen.blit(h_text, (menu_x + 160, actions_y + 55))
+    
+    # Gold display
+    gold_text = font_medium.render(f"Gold: {game.player.gold}", True, GOLD)
+    screen.blit(gold_text, (menu_x + 20, actions_y + 100))
     
     # Actions remaining indicator
     actions_left = game.player.actions_per_turn - game.player.actions_used
@@ -1207,6 +1321,7 @@ def main():
     game = Game()
     running = True
     shop_open = False
+    show_how_to_play = False
     global effects
     effects = VisualEffects()  # Reset effects
     
@@ -1222,6 +1337,8 @@ def main():
                 if game.game_state == "menu":
                     if event.key == pygame.K_RETURN:
                         game.start_new_game()
+                    elif event.key == pygame.K_h:
+                        show_how_to_play = not show_how_to_play
                 
                 elif game.game_state == "playing":
                     if shop_open:
@@ -1270,7 +1387,10 @@ def main():
                         game.game_state = "menu"
         
         if game.game_state == "menu":
-            draw_menu(screen, game)
+            if show_how_to_play:
+                draw_how_to_play(screen)
+            else:
+                draw_menu(screen, game)
         elif game.game_state == "playing":
             duck_y = draw_game(screen, game)
             draw_attack_menu(screen, game, duck_y)
