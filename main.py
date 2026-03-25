@@ -31,23 +31,7 @@ font_large = pygame.font.Font(None, 48)
 font_medium = pygame.font.Font(None, 32)
 font_small = pygame.font.Font(None, 24)
 
-EMOJI_MAP = {
-    "🦆": "DUCK",
-    "❌": "X",
-    "🔗": "LINK",
-    "🔄": "LOOP",
-    "💧": "LEAK",
-    "🏃": "RACE",
-    "👹": "BOSS",
-    "⚔️": "ATK",
-    "🛡️": "DEF",
-    "🎉": "WIN",
-    "💀": "DEAD",
-    "💰": "$",
-    "⭐": "*",
-    "🔥": "ROAST",
-    "❤️": "HP",
-}
+
 
 class RoastEngine:
     def __init__(self):
@@ -321,7 +305,7 @@ class Entity:
 
 class Player(Entity):
     def __init__(self):
-        super().__init__("🦆 Rubber Duck", 100, 100, 20, 5, "🦆")
+        super().__init__("Rubber Duck", 100, 100, 20, 5, "DUCK")
         self.xp = 0
         self.level = 1
         self.gold = 0
@@ -381,12 +365,12 @@ class Player(Entity):
 
 class Enemy(Entity):
     ENEMY_TYPES = {
-        "Syntax Error": {"hp": 30, "attack": 8, "defense": 2, "emoji": "❌", "xp": 10, "gold": 5},
-        "Null Pointer": {"hp": 25, "attack": 12, "defense": 0, "emoji": "🔗", "xp": 12, "gold": 8},
-        "Infinite Loop": {"hp": 50, "attack": 5, "defense": 5, "emoji": "🔄", "xp": 20, "gold": 15},
-        "Memory Leak": {"hp": 35, "attack": 10, "defense": 3, "emoji": "💧", "xp": 15, "gold": 10},
-        "Race Condition": {"hp": 40, "attack": 15, "defense": 2, "emoji": "🏃", "xp": 18, "gold": 12},
-        "Legacy Code Boss": {"hp": 200, "attack": 25, "defense": 10, "emoji": "👹", "xp": 100, "gold": 100},
+        "Syntax Error": {"hp": 30, "attack": 8, "defense": 2, "emoji": "X", "xp": 10, "gold": 5},
+        "Null Pointer": {"hp": 25, "attack": 12, "defense": 0, "emoji": "NULL", "xp": 12, "gold": 8},
+        "Infinite Loop": {"hp": 50, "attack": 5, "defense": 5, "emoji": "LOOP", "xp": 20, "gold": 15},
+        "Memory Leak": {"hp": 35, "attack": 10, "defense": 3, "emoji": "LEAK", "xp": 15, "gold": 10},
+        "Race Condition": {"hp": 40, "attack": 15, "defense": 2, "emoji": "RACE", "xp": 18, "gold": 12},
+        "Legacy Code Boss": {"hp": 200, "attack": 25, "defense": 10, "emoji": "BOSS", "xp": 100, "gold": 100},
     }
     
     def __init__(self, enemy_type=None):
@@ -535,7 +519,7 @@ class Game:
         if self.player.gold >= 30:
             self.player.gold -= 30
             self.player.heal(40)
-            return "✅ Healed for 40 HP!"
+            return "[HEALED] Healed for 40 HP!"
         return "Not enough gold! (Need 30)"
     
     def start_new_game(self):
@@ -599,7 +583,7 @@ def draw_game(screen, game):
         enemy_y = 200
         
         emoji_size = 80
-        enemy_text = font_large.render(EMOJI_MAP.get(enemy.emoji, enemy.emoji), True, WHITE)
+        enemy_text = font_large.render(enemy.emoji, True, WHITE)
         screen.blit(enemy_text, (enemy_x - enemy_text.get_width() // 2, enemy_y - 40))
         
         enemy_name = font_medium.render(enemy.name, True, WHITE)
