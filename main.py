@@ -1146,19 +1146,33 @@ def draw_how_to_play(screen):
     ]
     
     y = 210
-    for item in controls_info:
-        if item[1] is None:
+    i = 0
+    while i < len(controls_info):
+        item = controls_info[i]
+        
+        # Handle empty rows
+        if len(item) == 2 and item[1] is None:
             y += 15
-        elif item[0] == "KEY":
+            i += 1
+            continue
+        
+        # Check if this is a "KEY" label row
+        if len(item) == 2 and item[0] == "KEY":
             label = font_small.render(item[0], True, (100, 100, 100))
             screen.blit(label, (620, y))
             y += 20
-        else:
+            i += 1
+            continue
+        
+        # Otherwise it's a key+description pair (3 elements)
+        if len(item) >= 3:
             key = font_medium.render(item[0], True, item[1])
             screen.blit(key, (620, y))
             desc = font_small.render(item[2], True, item[2])
             screen.blit(desc, (700, y + 3))
             y += 30
+        
+        i += 1
 
 
 def draw_attack_menu(screen, game, duck_y):
