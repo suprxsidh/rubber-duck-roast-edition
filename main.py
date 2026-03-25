@@ -1117,6 +1117,12 @@ class Game:
         self.turn_in_progress = False  # Track if player is in combat turn
         
         self.generate_floor()
+        
+        # Zone transition state
+        self.zone_transition_state = None  # "complete" or "entering"
+        self.zone_transition_timer = 0
+        self.zone_rewards = {"xp": 0, "gold": 0}
+        self.previous_zone = 0
     
     def generate_floor(self):
         """Generate enemies based on zone progression."""
@@ -1305,9 +1311,29 @@ class Game:
                 if enemy.name == "MEGACORP CEO":
                     self.game_state = "victory"
                     self.roast_message = "YOU DEFEATED MEGACORP CEO! THE CYBER WORLD IS FREE!"
+                    effects.add_screen_flash(GOLD, 30)
+                    effects.add_shake(20, 25)
+                    for _ in range(40):
+                        effects.add_particle(
+                            WIDTH//2, HEIGHT//2,
+                            random.choice([GOLD, YELLOW, WHITE, CYAN]),
+                            random.randint(5, 15),
+                            (random.uniform(-8, 8), random.uniform(-10, -4)),
+                            60
+                        )
                 else:
-                    self.floor += 1
-                    self.generate_floor()
+                    # Check if we're completing a zone (floors 3, 6, 9, 12 complete)
+                    current_zone = get_zone_for_level(self.floor)
+                    next_floor = self.floor + 1
+                    next_zone = get_zone_for_level(next_floor)
+                    
+                    if next_zone > current_zone:
+                        # Zone transition! Show transition screen
+                        self.trigger_zone_transition(current_zone)
+                    else:
+                        # Same zone, just advance floor
+                        self.floor += 1
+                        self.generate_floor()
             
             return result["message"] + result_message
         
@@ -1374,9 +1400,29 @@ class Game:
                 if enemy.name == "MEGACORP CEO":
                     self.game_state = "victory"
                     self.roast_message = "YOU DEFEATED MEGACORP CEO! THE CYBER WORLD IS FREE!"
+                    effects.add_screen_flash(GOLD, 30)
+                    effects.add_shake(20, 25)
+                    for _ in range(40):
+                        effects.add_particle(
+                            WIDTH//2, HEIGHT//2,
+                            random.choice([GOLD, YELLOW, WHITE, CYAN]),
+                            random.randint(5, 15),
+                            (random.uniform(-8, 8), random.uniform(-10, -4)),
+                            60
+                        )
                 else:
-                    self.floor += 1
-                    self.generate_floor()
+                    # Check if we're completing a zone
+                    current_zone = get_zone_for_level(self.floor)
+                    next_floor = self.floor + 1
+                    next_zone = get_zone_for_level(next_floor)
+                    
+                    if next_zone > current_zone:
+                        # Zone transition! Show transition screen
+                        self.trigger_zone_transition(current_zone)
+                    else:
+                        # Same zone, just advance floor
+                        self.floor += 1
+                        self.generate_floor()
         
         return result
     
@@ -1585,6 +1631,94 @@ class Game:
         
         return "Unknown item type!"
     
+    def calculate_zone_rewards(self, zone_num):
+        """Calculate bonus rewards for completing a zone."""
+        # Base rewards scale with zone number
+        base_xp = zone_num * 50
+        base_gold = zone_num * 30
+        
+        # Bonus for completing zone
+        bonus_xp = zone_num * 25
+        bonus_gold = zone_num * 15
+        
+        return {
+            "xp": base_xp + bonus_xp,
+            "gold": base_gold + bonus_gold
+        }
+    
+    def trigger_zone_transition(self, completed_zone_num):
+        """Trigger zone transition screen when completing a zone."""
+        global effects
+        
+        self.previous_zone = completed_zone_num
+        self.zone_rewards = self.calculate_zone_rewards(completed_zone_num)
+        
+        # Grant zone completion rewards
+        self.stats.add_xp(self.zone_rewards["xp"])
+        self.stats.gold += self.zone_rewards["gold"]
+        
+        # Add celebration effects
+        for _ in range(30):
+            effects.add_particle(
+                WIDTH//2, HEIGHT//2,
+                random.choice([GOLD, YELLOW, CYAN, GREEN]),
+                random.randint(4, 12),
+                (random.uniform(-6, 6), random.uniform(-8, -3)),
+                50
+            )
+        effects.add_screen_flash(GOLD, 25)
+        effects.add_shake(15, 20)
+        
+        # Start zone transition
+        self.game_state = "zone_transition"
+        self.zone_transition_state = "complete"
+        self.zone_transition_timer = 90  # ~3 seconds at 30 FPS for "ZONE COMPLETE"
+        
+        self.roast_message = f"ZONE {completed_zone_num} COMPLETE!"
+    
+    def update_zone_transition(self):
+        """Update zone transition state. Called each frame."""
+        global effects
+        
+        if self.game_state != "zone_transition":
+            return
+        
+        self.zone_transition_timer -= 1
+        
+        if self.zone_transition_state == "complete":
+            # After "ZONE COMPLETE" timer, show "Entering next zone"
+            if self.zone_transition_timer <= 0:
+                next_zone = self.previous_zone + 1
+                if next_zone <= 5:
+                    zone_name = ZONES[next_zone]["name"]
+                    self.roast_message = f"Entering {zone_name}..."
+                    self.zone_transition_state = "entering"
+                    self.zone_transition_timer = 60  # ~2 seconds for "Entering"
+                    
+                    # Add transition effects
+                    effects.add_screen_flash(CYAN, 15)
+                    for _ in range(20):
+                        effects.add_particle(
+                            WIDTH//2, HEIGHT//2,
+                            random.choice([CYAN, BLUE, WHITE]),
+                            random.randint(4, 10),
+                            (random.uniform(-5, 5), random.uniform(-6, -2)),
+                            40
+                        )
+                else:
+                    # Should not happen, but cap at zone 5
+                    self.floor += 1
+                    self.generate_floor()
+                    self.game_state = "playing"
+        
+        elif self.zone_transition_state == "entering":
+            # After "Entering" timer, advance to next floor
+            if self.zone_transition_timer <= 0:
+                self.floor += 1
+                self.generate_floor()
+                self.game_state = "playing"
+                self.roast_message = self.roast_engine.get_roast("turn_start")
+    
     def start_new_game(self):
         global effects
         self.player = Player()
@@ -1597,6 +1731,12 @@ class Game:
         self.game_state = "playing"
         self.roast_message = self.roast_engine.get_roast("turn_start")
         effects = VisualEffects()  # Reset visual effects for new game
+        
+        # Reset zone transition state
+        self.zone_transition_state = None
+        self.zone_transition_timer = 0
+        self.zone_rewards = {"xp": 0, "gold": 0}
+        self.previous_zone = 0
 
 
 def draw_text(surface, text, x, y, font, color=WHITE, max_width=None, align="left"):
@@ -2400,6 +2540,128 @@ def draw_inventory(screen, game):
     screen.blit(exit_text, (WIDTH // 2 - exit_text.get_width() // 2, HEIGHT - 112))
 
 
+def draw_zone_transition(screen, game):
+    """Draw zone transition screen with completion message and rewards."""
+    draw_gradient_background(screen)
+    
+    # Draw celebration particles in background
+    for _ in range(3):
+        effects.add_particle(
+            random.randint(100, WIDTH - 100),
+            random.randint(100, HEIGHT - 100),
+            random.choice([GOLD, YELLOW, CYAN, GREEN, PURPLE]),
+            random.randint(3, 8),
+            (random.uniform(-2, 2), random.uniform(-3, -1)),
+            30
+        )
+    
+    # Main transition panel
+    panel_width = 600
+    panel_height = 450
+    panel_x = WIDTH // 2 - panel_width // 2
+    panel_y = HEIGHT // 2 - panel_height // 2
+    
+    # Panel background with gradient effect
+    panel_bg = pygame.Rect(panel_x, panel_y, panel_width, panel_height)
+    pygame.draw.rect(screen, (20, 20, 45), panel_bg, border_radius=20)
+    pygame.draw.rect(screen, GOLD, panel_bg, 4, border_radius=20)
+    
+    if game.zone_transition_state == "complete":
+        # ZONE COMPLETE - Big celebration
+        zone_num = game.previous_zone
+        zone_name = ZONES[zone_num]["name"]
+        
+        # Animated "ZONE COMPLETE" with glow
+        for i in range(4):
+            glow_alpha = 80 - i * 20
+            glow_text = font_title.render(f"ZONE {zone_num} COMPLETE!", True, (*GOLD, glow_alpha))
+            screen.blit(glow_text, (WIDTH // 2 - glow_text.get_width() // 2 + (i-1), 180 + (i-1)))
+        
+        zone_complete_text = font_title.render(f"ZONE {zone_num} COMPLETE!", True, GOLD)
+        screen.blit(zone_complete_text, (WIDTH // 2 - zone_complete_text.get_width() // 2, 180))
+        
+        # Zone name
+        name_text = font_large.render(zone_name, True, CYAN)
+        screen.blit(name_text, (WIDTH // 2 - name_text.get_width() // 2, 240))
+        
+        # Rewards panel
+        rewards_box = pygame.Rect(panel_x + 50, panel_y + 100, panel_width - 100, 150)
+        pygame.draw.rect(screen, (30, 30, 50), rewards_box, border_radius=12)
+        pygame.draw.rect(screen, PURPLE, rewards_box, 2, border_radius=12)
+        
+        # Rewards title
+        rewards_title = font_large.render("ZONE REWARDS", True, YELLOW)
+        screen.blit(rewards_title, (WIDTH // 2 - rewards_title.get_width() // 2, panel_y + 115))
+        
+        # XP reward
+        xp_text = font_medium.render(f"+{game.zone_rewards['xp']} XP", True, PURPLE)
+        screen.blit(xp_text, (WIDTH // 2 - xp_text.get_width() // 2, panel_y + 160))
+        
+        # Gold reward
+        gold_text = font_medium.render(f"+{game.zone_rewards['gold']} Gold", True, GOLD)
+        screen.blit(gold_text, (WIDTH // 2 - gold_text.get_width() // 2, panel_y + 195))
+        
+        # Continue hint
+        timer_text = font_small.render(f"Entering next zone in {game.zone_transition_timer // 30 + 1}...", True, LIGHT_GRAY)
+        screen.blit(timer_text, (WIDTH // 2 - timer_text.get_width() // 2, panel_y + 280))
+        
+        # Decorative duck
+        duck_box = pygame.Rect(WIDTH//2 - 50, panel_y + 320, 100, 80)
+        pygame.draw.rect(screen, (30, 30, 50), duck_box, border_radius=8)
+        pygame.draw.rect(screen, YELLOW, duck_box, 2, border_radius=8)
+        
+        lines = DUCK_SPRITE.strip().split('\n')
+        for i, line in enumerate(lines):
+            text = font_tiny.render(line, True, YELLOW)
+            screen.blit(text, (WIDTH//2 - text.get_width()//2, panel_y + 330 + i * 12))
+    
+    elif game.zone_transition_state == "entering":
+        # ENTERING NEXT ZONE
+        next_zone = game.previous_zone + 1
+        zone_name = ZONES[next_zone]["name"]
+        
+        # Animated "Entering" with glow
+        for i in range(3):
+            glow_alpha = 60 - i * 20
+            glow_text = font_title.render(f"Entering {zone_name}...", True, (*CYAN, glow_alpha))
+            screen.blit(glow_text, (WIDTH // 2 - glow_text.get_width() // 2 + (i-1), 220 + (i-1)))
+        
+        entering_text = font_title.render(f"Entering {zone_name}...", True, CYAN)
+        screen.blit(entering_text, (WIDTH // 2 - entering_text.get_width() // 2, 220))
+        
+        # Zone number indicator
+        zone_indicator = font_large.render(f"Zone {next_zone} of 5", True, WHITE)
+        screen.blit(zone_indicator, (WIDTH // 2 - zone_indicator.get_width() // 2, 290))
+        
+        # Progress bar showing zone progression
+        progress_width = 400
+        progress_height = 20
+        progress_x = WIDTH // 2 - progress_width // 2
+        progress_y = 350
+        
+        # Background
+        pygame.draw.rect(screen, DARK_GRAY, (progress_x, progress_y, progress_width, progress_height), border_radius=10)
+        
+        # Fill based on zone
+        fill_ratio = next_zone / 5
+        fill_width = int(progress_width * fill_ratio)
+        pygame.draw.rect(screen, CYAN, (progress_x, progress_y, fill_width, progress_height), border_radius=10)
+        
+        # Border
+        pygame.draw.rect(screen, WHITE, (progress_x, progress_y, progress_width, progress_height), 2, border_radius=10)
+        
+        # Loading text
+        loading_text = font_small.render("Preparing for battle...", True, LIGHT_GRAY)
+        screen.blit(loading_text, (WIDTH // 2 - loading_text.get_width() // 2, 390))
+        
+        # Timer
+        timer_text = font_small.render(f"{game.zone_transition_timer // 30 + 1}...", True, CYAN)
+        screen.blit(timer_text, (WIDTH // 2 - timer_text.get_width() // 2, 420))
+    
+    # Draw visual effects
+    effects.draw(screen)
+
+
 def main():
     game = Game()
     running = True
@@ -2480,6 +2742,14 @@ def main():
                 elif game.game_state in ["victory", "defeat"]:
                     if event.key == pygame.K_RETURN:
                         game.game_state = "menu"
+                
+                elif game.game_state == "zone_transition":
+                    # Zone transition is automatic - no user input needed
+                    pass
+        
+        # Update zone transition state each frame
+        if game.game_state == "zone_transition":
+            game.update_zone_transition()
         
         if game.game_state == "menu":
             if show_how_to_play:
@@ -2493,41 +2763,77 @@ def main():
                 draw_shop(screen, game)
             if inventory_open:
                 draw_inventory(screen, game)
+        elif game.game_state == "zone_transition":
+            draw_zone_transition(screen, game)
         elif game.game_state == "victory":
             draw_gradient_background(screen)
             
-            # Victory panel
-            victory_box = pygame.Rect(WIDTH//2 - 250, 150, 500, 400)
+            # Add extra celebration particles for victory
+            if random.random() < 0.3:
+                effects.add_particle(
+                    random.randint(100, WIDTH - 100),
+                    random.randint(50, HEIGHT - 150),
+                    random.choice([GOLD, YELLOW, WHITE, CYAN]),
+                    random.randint(4, 10),
+                    (random.uniform(-3, 3), random.uniform(-4, -2)),
+                    40
+                )
+            
+            # Victory panel - larger for final victory
+            victory_box = pygame.Rect(WIDTH//2 - 300, 100, 600, 500)
             pygame.draw.rect(screen, DARK_GRAY, victory_box, border_radius=20)
             pygame.draw.rect(screen, GOLD, victory_box, 4, border_radius=20)
             
             # Victory text with glow
-            for i in range(3):
-                glow = font_title.render("VICTORY!", True, (*GOLD, 100 - i * 30))
-                screen.blit(glow, (WIDTH // 2 - glow.get_width() // 2 + (i-1)*2, 180 + (i-1)*2))
+            for i in range(5):
+                glow = font_title.render("VICTORY!", True, (*GOLD, 120 - i * 25))
+                screen.blit(glow, (WIDTH // 2 - glow.get_width() // 2 + (i-2)*3, 130 + (i-2)*3))
             
             win_text = font_title.render("VICTORY!", True, GOLD)
-            screen.blit(win_text, (WIDTH // 2 - win_text.get_width() // 2, 180))
+            screen.blit(win_text, (WIDTH // 2 - win_text.get_width() // 2, 130))
             
-            # Score display
-            score_box = pygame.Rect(WIDTH//2 - 150, 280, 300, 80)
-            pygame.draw.rect(screen, (30, 30, 50), score_box, border_radius=10)
-            score_label = font_medium.render("Final Score", True, LIGHT_GRAY)
-            screen.blit(score_label, (WIDTH // 2 - score_label.get_width() // 2, 295))
-            score_text = font_large.render(f"{game.score}", True, WHITE)
-            screen.blit(score_text, (WIDTH // 2 - score_text.get_width() // 2, 325))
+            # Game complete message
+            complete_text = font_large.render("CYBER WORLD LIBERATED!", True, CYAN)
+            screen.blit(complete_text, (WIDTH // 2 - complete_text.get_width() // 2, 190))
+            
+            # Stats panel
+            stats_box = pygame.Rect(WIDTH//2 - 200, 240, 400, 180)
+            pygame.draw.rect(screen, (30, 30, 50), stats_box, border_radius=12)
+            pygame.draw.rect(screen, PURPLE, stats_box, 2, border_radius=12)
+            
+            # Stats title
+            stats_title = font_medium.render("FINAL STATS", True, YELLOW)
+            screen.blit(stats_title, (WIDTH // 2 - stats_title.get_width() // 2, 255))
+            
+            # Display various stats
+            final_stats = [
+                ("Final Score", f"{game.score}", WHITE),
+                ("Player Level", f"{game.stats.level}", YELLOW),
+                ("Total Gold Earned", f"{game.stats.gold}", GOLD),
+                ("Zones Cleared", "5/5", GREEN),
+            ]
+            
+            for i, (label, value, color) in enumerate(final_stats):
+                y_pos = 290 + i * 35
+                label_text = font_small.render(label + ":", True, LIGHT_GRAY)
+                value_text = font_medium.render(str(value), True, color)
+                screen.blit(label_text, (WIDTH // 2 - 150, y_pos))
+                screen.blit(value_text, (WIDTH // 2 + 50, y_pos))
             
             # Roast message
-            roast_box = pygame.Rect(WIDTH//2 - 200, 380, 400, 60)
+            roast_box = pygame.Rect(WIDTH//2 - 250, 440, 500, 50)
             pygame.draw.rect(screen, PURPLE, roast_box, border_radius=8)
-            roast_text = font_medium.render(game.roast_message, True, YELLOW)
-            screen.blit(roast_text, (WIDTH // 2 - roast_text.get_width() // 2, 400))
+            roast_text = font_small.render(game.roast_message, True, YELLOW)
+            screen.blit(roast_text, (WIDTH // 2 - roast_text.get_width() // 2, 460))
             
             # Restart hint
-            restart_box = pygame.Rect(WIDTH//2 - 150, 480, 300, 50)
+            restart_box = pygame.Rect(WIDTH//2 - 180, 520, 360, 50)
             pygame.draw.rect(screen, DARK_GREEN, restart_box, border_radius=8)
             restart_text = font_medium.render("Press ENTER to play again", True, WHITE)
-            screen.blit(restart_text, (WIDTH // 2 - restart_text.get_width() // 2, 495))
+            screen.blit(restart_text, (WIDTH // 2 - restart_text.get_width() // 2, 535))
+            
+            # Draw visual effects
+            effects.draw(screen)
         
         elif game.game_state == "defeat":
             draw_gradient_background(screen)
