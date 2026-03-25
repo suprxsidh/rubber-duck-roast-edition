@@ -132,7 +132,11 @@ class VisualEffects:
                 self.screen_flash = None
                 return
             if isinstance(color, (list, tuple)) and len(color) >= 3:
-                flash_color = (int(color[0]), int(color[1]), int(color[2]), int(alpha))
+                r = max(0, min(255, int(color[0])))
+                g = max(0, min(255, int(color[1])))
+                b = max(0, min(255, int(color[2])))
+                a = max(0, min(255, int(alpha)))
+                flash_color = (r, g, b, a)
                 flash = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
                 flash.fill(flash_color)
                 surface.blit(flash, (0, 0))
