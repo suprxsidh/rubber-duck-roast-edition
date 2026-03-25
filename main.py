@@ -80,7 +80,7 @@ class VisualEffects:
         # Update screen flash
         if self.screen_flash:
             self.screen_flash["duration"] -= 1
-            self.screen_flash["alpha"] = int(180 * (self.screen_flash["duration"] / 10))
+            self.screen_flash["alpha"] = max(0, int(180 * (self.screen_flash["duration"] / 10)))
             if self.screen_flash["duration"] <= 0:
                 self.screen_flash = None
         
@@ -126,9 +126,15 @@ class VisualEffects:
             surface.blit(text, (t["x"] - text.get_width()//2, t["y"]))
         
         # Draw screen flash
-        if self.screen_flash:
+        if self.screen_flash and self.screen_flash["color"]:
+            color = self.screen_flash["color"]
+            alpha = self.screen_flash["alpha"]
+            if len(color) == 3:
+                flash_color = (color[0], color[1], color[2], alpha)
+            else:
+                flash_color = (*color[:3], alpha)
             flash = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
-            flash.fill((*self.screen_flash["color"], self.screen_flash["alpha"]))
+            flash.fill(flash_color)
             surface.blit(flash, (0, 0))
     
     def get_shake_offset(self):
