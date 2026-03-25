@@ -574,6 +574,7 @@ class Game:
         self.floor = 1
         self.high_score = 0
         self.score = 0
+        self.action_cooldown = 0
         
         self.generate_floor()
     
@@ -1186,14 +1187,18 @@ def draw_attack_menu(screen, game, duck_y):
     
     # Actions remaining
     actions_left = game.player.actions_per_turn - game.player.actions_used
-    actions_text = font_medium.render(f"Actions: {actions_left}/{game.player.actions_per_turn}", True, GREEN if actions_left > 0 else RED)
+    on_cooldown = game.action_cooldown > 0
+    if on_cooldown:
+        actions_text = font_medium.render(f"WAIT... ({game.action_cooldown})", True, RED)
+    else:
+        actions_text = font_medium.render(f"Actions: {actions_left}/{game.player.actions_per_turn}", True, GREEN if actions_left > 0 else RED)
     screen.blit(actions_text, (menu_x + 20, menu_y + 50))
     
     # Attack list with keyboard indicators
     y_offset = 90
     for i, (name, attack) in enumerate(game.player.attacks.items()):
         key = str(i + 1)
-        can_use = game.player.can_act()
+        can_use = game.player.can_act() and not on_cooldown
         
         # Row background
         row_bg = pygame.Rect(menu_x + 10, menu_y + y_offset, menu_width - 20, 50)
@@ -1359,24 +1364,30 @@ def main():
                                 result = game.buy_upgrade(name)
                                 print(result)
                     else:
-                        if event.key in [pygame.K_1, pygame.K_2, pygame.K_3, pygame.K_4, pygame.K_5]:
-                            idx = event.key - pygame.K_1
-                            if idx < len(game.player.attacks):
-                                name = list(game.player.attacks.keys())[idx]
-                                result = game.player_attack(name)
-                                print(result)
-                        
-                        elif event.key == pygame.K_6:
-                            if len(game.player.attacks) > 5:
-                                name = list(game.player.attacks.keys())[5]
-                                result = game.player_attack(name)
-                                print(result)
-                        
-                        elif event.key == pygame.K_7:
-                            if len(game.player.attacks) > 6:
-                                name = list(game.player.attacks.keys())[6]
-                                result = game.player_attack(name)
-                                print(result)
+                        if game.action_cooldown > 0:
+                            pass
+                        elif game.player.can_act():
+                            if event.key in [pygame.K_1, pygame.K_2, pygame.K_3, pygame.K_4, pygame.K_5]:
+                                idx = event.key - pygame.K_1
+                                if idx < len(game.player.attacks):
+                                    name = list(game.player.attacks.keys())[idx]
+                                    result = game.player_attack(name)
+                                    print(result)
+                                    game.action_cooldown = 15
+                            
+                            elif event.key == pygame.K_6:
+                                if len(game.player.attacks) > 5:
+                                    name = list(game.player.attacks.keys())[5]
+                                    result = game.player_attack(name)
+                                    print(result)
+                                    game.action_cooldown = 15
+                            
+                            elif event.key == pygame.K_7:
+                                if len(game.player.attacks) > 6:
+                                    name = list(game.player.attacks.keys())[6]
+                                    result = game.player_attack(name)
+                                    print(result)
+                                    game.action_cooldown = 15
                         
                         elif event.key == pygame.K_u:
                             shop_open = True
@@ -1389,6 +1400,7 @@ def main():
                             if game.get_current_enemy():
                                 game.enemy_turn()
                                 game.player.reset_turn()
+                                game.action_cooldown = 0
                 
                 elif game.game_state in ["victory", "defeat"]:
                     if event.key == pygame.K_RETURN:
@@ -1473,6 +1485,9 @@ def main():
             screen.blit(restart_text, (WIDTH // 2 - restart_text.get_width() // 2, 495))
         
         pygame.display.flip()
+        if game.action_cooldown > 0:
+            game.action_cooldown -= 1
+        
         clock.tick(30)
     
     pygame.quit()
