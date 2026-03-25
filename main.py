@@ -1003,7 +1003,7 @@ def draw_game(screen, game):
     return duck_y
 
 
-def draw_menu(screen):
+def draw_menu(screen, game):
     draw_gradient_background(screen)
     
     # Title with glow effect
@@ -1264,7 +1264,7 @@ def main():
                         game.game_state = "menu"
         
         if game.game_state == "menu":
-            draw_menu(screen)
+            draw_menu(screen, game)
         elif game.game_state == "playing":
             duck_y = draw_game(screen, game)
             draw_attack_menu(screen, game, duck_y)
