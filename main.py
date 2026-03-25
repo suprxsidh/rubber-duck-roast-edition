@@ -127,14 +127,15 @@ class VisualEffects:
         # Draw screen flash
         if self.screen_flash and self.screen_flash["color"]:
             color = self.screen_flash["color"]
-            alpha = self.screen_flash["alpha"]
-            if len(color) == 3:
-                flash_color = (color[0], color[1], color[2], alpha)
-            else:
-                flash_color = (*color[:3], alpha)
-            flash = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
-            flash.fill(flash_color)
-            surface.blit(flash, (0, 0))
+            alpha = self.screen_flash.get("alpha", 150)
+            if alpha <= 0:
+                self.screen_flash = None
+                return
+            if isinstance(color, (list, tuple)) and len(color) >= 3:
+                flash_color = (int(color[0]), int(color[1]), int(color[2]), int(alpha))
+                flash = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
+                flash.fill(flash_color)
+                surface.blit(flash, (0, 0))
     
     def get_shake_offset(self):
         return self.shake_offset
