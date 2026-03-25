@@ -4,7 +4,6 @@ import sys
 import math
 
 pygame.init()
-pygame.font.init()
 
 WIDTH, HEIGHT = 1200, 800
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
@@ -1062,117 +1061,107 @@ def draw_how_to_play(screen):
     
     # Title
     title = font_title.render("HOW TO PLAY", True, YELLOW)
-    screen.blit(title, (WIDTH // 2 - title.get_width() // 2, 50))
+    screen.blit(title, (WIDTH // 2 - title.get_width() // 2, 40))
     
     # Back hint
-    back_text = font_medium.render("Press H to go back", True, CYAN)
-    screen.blit(back_text, (WIDTH // 2 - back_text.get_width() // 2, 100))
+    back_text = font_small.render("Press H or ESC to go back", True, CYAN)
+    screen.blit(back_text, (WIDTH // 2 - back_text.get_width() // 2, 90))
     
     # Left panel - Gameplay
-    left_panel = pygame.Rect(50, 150, 500, 550)
+    left_panel = pygame.Rect(40, 130, WIDTH//2 - 60, 600)
     pygame.draw.rect(screen, (20, 20, 35), left_panel, border_radius=15)
     pygame.draw.rect(screen, CYAN, left_panel, 3, border_radius=15)
     
     left_title = font_large.render("GAMEPLAY", True, YELLOW)
-    screen.blit(left_title, (70, 165))
+    screen.blit(left_title, (60, 145))
     
-    gameplay_info = [
-        ("OBJECTIVE", GOLD),
-        ("Defeat the Legacy Code Boss on Floor 5!", WHITE),
-        ("", None),
-        ("COMBAT", GOLD),
-        ("- You have 2 actions per turn", WHITE),
-        ("- Use attacks to damage bugs", WHITE),
-        ("- Each bug has HP, Attack & Defense", WHITE),
-        ("- Defeat all bugs to advance floors", WHITE),
-        ("- Boss appears every 5 floors", WHITE),
-        ("", None),
-        ("UPGRADES", GOLD),
-        ("- Earn gold by defeating enemies", WHITE),
-        ("- Buy upgrades between battles", WHITE),
-        ("- Upgrades boost attack, defense, HP", WHITE),
-        ("", None),
-        ("TIPS", GOLD),
-        ("- Watch your HP - it doesn't auto-heal", WHITE),
-        ("- Heal costs 30 gold when needed", WHITE),
-        ("- Prioritize upgrades that match your style", WHITE),
+    # Section headers and content - simple format
+    y = 190
+    
+    # OBJECTIVE
+    section = font_medium.render("OBJECTIVE", True, GOLD)
+    screen.blit(section, (60, y))
+    y += 30
+    obj = font_small.render("Defeat the Legacy Code Boss on Floor 5!", True, WHITE)
+    screen.blit(obj, (60, y))
+    y += 45
+    
+    # COMBAT
+    section = font_medium.render("COMBAT", True, GOLD)
+    screen.blit(section, (60, y))
+    y += 30
+    combat_lines = [
+        "- You have 2 actions per turn",
+        "- Use attacks to damage bugs",
+        "- Each bug has HP, Attack & Defense", 
+        "- Defeat all bugs to advance floors",
+        "- Boss appears every 5 floors"
     ]
+    for line in combat_lines:
+        text = font_small.render(line, True, WHITE)
+        screen.blit(text, (60, y))
+        y += 22
+    y += 15
     
-    y = 210
-    for item in gameplay_info:
-        if item[1] is None:
-            y += 15
-        elif item[0] in ("OBJECTIVE", "COMBAT", "UPGRADES", "TIPS"):
-            font = font_medium
-            y += 10
-        else:
-            font = font_small
-        rendered = font.render(item[0], True, item[1] if item[1] else WHITE)
-        screen.blit(rendered, (70, y))
-        y += 28 if item[0] in ("OBJECTIVE", "COMBAT", "UPGRADES", "TIPS") else 22
+    # UPGRADES
+    section = font_medium.render("UPGRADES", True, GOLD)
+    screen.blit(section, (60, y))
+    y += 30
+    upgrade_lines = [
+        "- Earn gold by defeating enemies",
+        "- Buy upgrades between battles",
+        "- Upgrades boost attack, defense, HP"
+    ]
+    for line in upgrade_lines:
+        text = font_small.render(line, True, WHITE)
+        screen.blit(text, (60, y))
+        y += 22
+    y += 15
+    
+    # TIPS
+    section = font_medium.render("TIPS", True, GOLD)
+    screen.blit(section, (60, y))
+    y += 30
+    tip_lines = [
+        "- Watch your HP - it does not auto-heal",
+        "- Heal costs 30 gold when needed",
+        "- Prioritize upgrades that match your style"
+    ]
+    for line in tip_lines:
+        text = font_small.render(line, True, WHITE)
+        screen.blit(text, (60, y))
+        y += 22
     
     # Right panel - Controls
-    right_panel = pygame.Rect(580, 150, 550, 550)
+    right_panel = pygame.Rect(WIDTH//2 + 20, 130, WIDTH//2 - 60, 600)
     pygame.draw.rect(screen, (20, 20, 35), right_panel, border_radius=15)
     pygame.draw.rect(screen, PURPLE, right_panel, 3, border_radius=15)
     
     right_title = font_large.render("CONTROLS", True, YELLOW)
-    screen.blit(right_title, (600, 165))
+    screen.blit(right_title, (WIDTH//2 + 40, 145))
     
-    controls_info = [
-        ("KEY", WHITE),
-        ("1-7", CYAN),
-        ("Use attack (number = attack slot)", GRAY),
-        ("", None),
-        ("KEY", WHITE),
-        ("ENTER", CYAN),
-        ("End your turn / Start game", GRAY),
-        ("", None),
-        ("KEY", WHITE),
-        ("U", CYAN),
-        ("Open upgrade shop", GRAY),
-        ("", None),
-        ("KEY", WHITE),
-        ("H", CYAN),
-        ("Heal 40 HP (costs 30 gold)", GRAY),
-        ("", None),
-        ("KEY", WHITE),
-        ("ESC", CYAN),
-        ("Close upgrade shop", GRAY),
-        ("", None),
-        ("KEY", WHITE),
-        ("1-7 (in shop)", CYAN),
-        ("Buy upgrade (number = upgrade slot)", GRAY),
+    y = 190
+    controls = [
+        ("1-7", "Use attack (number = attack slot)"),
+        ("ENTER", "End your turn / Start game"),
+        ("U", "Open upgrade shop"),
+        ("H", "Heal 40 HP (costs 30 gold)"),
+        ("ESC", "Close upgrade shop"),
+        ("1-7 (in shop)", "Buy upgrade (number = upgrade slot)"),
     ]
     
-    y = 210
-    i = 0
-    while i < len(controls_info):
-        item = controls_info[i]
+    for key, desc in controls:
+        # Key box
+        key_box = pygame.Rect(WIDTH//2 + 40, y, 80, 32)
+        pygame.draw.rect(screen, PURPLE, key_box, border_radius=5)
+        key_text = font_medium.render(key, True, WHITE)
+        screen.blit(key_text, (WIDTH//2 + 50, y + 5))
         
-        # Handle empty rows
-        if len(item) == 2 and item[1] is None:
-            y += 15
-            i += 1
-            continue
+        # Description
+        desc_text = font_small.render(desc, True, (180, 180, 180))
+        screen.blit(desc_text, (WIDTH//2 + 140, y + 8))
         
-        # Check if this is a "KEY" label row
-        if len(item) == 2 and item[0] == "KEY":
-            label = font_small.render(item[0], True, (100, 100, 100))
-            screen.blit(label, (620, y))
-            y += 20
-            i += 1
-            continue
-        
-        # Otherwise it's a key+description pair (3 elements)
-        if len(item) >= 3:
-            key = font_medium.render(item[0], True, item[1])
-            screen.blit(key, (620, y))
-            desc = font_small.render(item[2], True, item[2])
-            screen.blit(desc, (700, y + 3))
-            y += 30
-        
-        i += 1
+        y += 40
 
 
 def draw_attack_menu(screen, game, duck_y):
@@ -1351,7 +1340,7 @@ def main():
                 if game.game_state == "menu":
                     if event.key == pygame.K_RETURN:
                         game.start_new_game()
-                    elif event.key == pygame.K_h:
+                    elif event.key == pygame.K_h or event.key == pygame.K_ESCAPE:
                         show_how_to_play = not show_how_to_play
                 
                 elif game.game_state == "playing":
