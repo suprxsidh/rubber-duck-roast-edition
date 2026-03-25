@@ -3,6 +3,7 @@ import random
 import sys
 
 pygame.init()
+pygame.font.init()
 
 WIDTH, HEIGHT = 1200, 800
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
@@ -20,10 +21,33 @@ GRAY = (100, 100, 100)
 DARK_GRAY = (50, 50, 50)
 GOLD = (255, 215, 0)
 
+try:
+    font_emoji = pygame.font.Font("/System/Library/Fonts/Apple Color Emoji.ttc", 48)
+except:
+    font_emoji = pygame.font.Font(None, 48)
+
 font_title = pygame.font.Font(None, 64)
 font_large = pygame.font.Font(None, 48)
 font_medium = pygame.font.Font(None, 32)
 font_small = pygame.font.Font(None, 24)
+
+EMOJI_MAP = {
+    "🦆": "DUCK",
+    "❌": "X",
+    "🔗": "LINK",
+    "🔄": "LOOP",
+    "💧": "LEAK",
+    "🏃": "RACE",
+    "👹": "BOSS",
+    "⚔️": "ATK",
+    "🛡️": "DEF",
+    "🎉": "WIN",
+    "💀": "DEAD",
+    "💰": "$",
+    "⭐": "*",
+    "🔥": "ROAST",
+    "❤️": "HP",
+}
 
 class RoastEngine:
     def __init__(self):
@@ -429,17 +453,17 @@ class Game:
         if attack_name == "Float Above":
             self.player.dodging = True
             self.roast_message = self.roast_engine.get_roast("attack", {"attack": attack_name, "enemy_hp": enemy.hp})
-            return f"🛡️ You float above! Next attack will be dodged!"
+            return f"[DEF] You float above! Next attack will be dodged!"
         
         damage, crit = self.player.attack_target(attack_name, enemy)
         
         if damage == 0:
             self.roast_message = self.roast_engine.get_roast("mistake", {"mistake": "missed attack"})
-            return f"❌ You missed with {attack_name}!"
+            return f"[MISS] You missed with {attack_name}!"
         
         self.roast_message = self.roast_engine.get_roast("attack", {"attack": attack_name, "enemy_hp": enemy.hp})
         
-        result = f"⚔️ You used {attack_name}! "
+        result = f"[ATK] You used {attack_name}! "
         if crit:
             result += f"CRITICAL HIT! "
         result += f"Dealt {damage} damage!"
@@ -450,7 +474,7 @@ class Game:
             self.player.xp += enemy.xp_reward * self.player.xp_multiplier
             self.player.gold += enemy.gold_reward
             self.roast_message = self.roast_engine.get_roast("victory", {"enemy": enemy.name})
-            result += f"\n🎉 {enemy.name} defeated! +{int(enemy.xp_reward * self.player.xp_multiplier)} XP, {enemy.gold_reward} gold!"
+            result += f"\n[VICTORY] {enemy.name} defeated! +{int(enemy.xp_reward * self.player.xp_multiplier)} XP, {enemy.gold_reward} gold!"
             
             self.current_enemy_index += 1
             if self.current_enemy_index >= len(self.enemies):
@@ -505,7 +529,7 @@ class Game:
                 self.player.xp_multiplier += upgrade["value"] / 100
         
         self.roast_message = self.roast_engine.get_roast("upgrade", {"upgrade": upgrade_name})
-        return f"✅ Bought {upgrade_name}!"
+        return f"[BOUGHT] {upgrade_name}!"
     
     def heal_player(self):
         if self.player.gold >= 30:
@@ -563,7 +587,7 @@ def draw_game(screen, game):
     
     pygame.draw.rect(screen, DARK_GRAY, (20, 20, WIDTH - 40, HEIGHT - 40), 3)
     
-    title = font_title.render("🦆 RUBBER DUCK DEBUGGING: THE ROAST EDITION 🦆", True, YELLOW)
+    title = font_title.render("RUBBER DUCK DEBUGGING: THE ROAST EDITION", True, YELLOW)
     screen.blit(title, (WIDTH // 2 - title.get_width() // 2, 30))
     
     floor_text = font_large.render(f"Floor {game.floor}", True, GOLD)
@@ -575,7 +599,7 @@ def draw_game(screen, game):
         enemy_y = 200
         
         emoji_size = 80
-        enemy_text = font_large.render(enemy.emoji, True, WHITE)
+        enemy_text = font_large.render(EMOJI_MAP.get(enemy.emoji, enemy.emoji), True, WHITE)
         screen.blit(enemy_text, (enemy_x - enemy_text.get_width() // 2, enemy_y - 40))
         
         enemy_name = font_medium.render(enemy.name, True, WHITE)
@@ -588,7 +612,7 @@ def draw_game(screen, game):
     duck_x = WIDTH // 2
     duck_y = 450
     
-    duck_text = font_title.render("🦆", True, YELLOW)
+    duck_text = font_title.render("DUCK", True, YELLOW)
     screen.blit(duck_text, (duck_x - duck_text.get_width() // 2, duck_y - 30))
     
     player_name = font_medium.render(game.player.name, True, WHITE)
@@ -605,7 +629,7 @@ def draw_game(screen, game):
     pygame.draw.rect(screen, PURPLE, roast_bg)
     pygame.draw.rect(screen, GOLD, roast_bg, 3)
     
-    roast_label = font_small.render("🔥 THE ROAST:", True, GOLD)
+    roast_label = font_small.render("THE ROAST:", True, GOLD)
     screen.blit(roast_label, (60, 615))
     
     draw_text(screen, game.roast_message, 60, 640, font_small, WHITE, WIDTH - 140)
@@ -613,7 +637,7 @@ def draw_game(screen, game):
     stats_x = 50
     stats_y = 710
     
-    stats_text = f"💰 Gold: {game.player.gold}  |  � XP: {int(game.player.xp)}  |  🏆 Score: {game.score}  |  👹 High Score: {game.high_score}"
+    stats_text = f"Gold: {game.player.gold}  |  XP: {int(game.player.xp)}  |  Score: {game.score}  |  High Score: {game.high_score}"
     draw_text(screen, stats_text, stats_x, stats_y, font_small, GOLD)
     
     return duck_y
@@ -622,13 +646,13 @@ def draw_game(screen, game):
 def draw_menu(screen):
     screen.fill(BLACK)
     
-    title = font_title.render("🦆 RUBBER DUCK DEBUGGING", True, YELLOW)
+    title = font_title.render("RUBBER DUCK DEBUGGING", True, YELLOW)
     screen.blit(title, (WIDTH // 2 - title.get_width() // 2, 150))
     
     subtitle = font_large.render("THE ROAST EDITION", True, GOLD)
     screen.blit(subtitle, (WIDTH // 2 - subtitle.get_width() // 2, 220))
     
-    duck = font_title.render("🦆" * 10, True, YELLOW)
+    duck = font_title.render("DUCK " * 5, True, YELLOW)
     screen.blit(duck, (WIDTH // 2 - duck.get_width() // 2, 300))
     
     start_text = font_medium.render("Press ENTER to Start", True, GREEN)
@@ -687,7 +711,7 @@ def draw_upgrade_shop(screen, game):
     title = font_large.render("🛒 UPGRADE SHOP", True, YELLOW)
     screen.blit(title, (WIDTH // 2 - title.get_width() // 2, 120))
     
-    gold_text = font_medium.render(f"💰 Your Gold: {game.player.gold}", True, GOLD)
+    gold_text = font_medium.render(f"Your Gold: {game.player.gold}", True, GOLD)
     screen.blit(gold_text, (WIDTH // 2 - gold_text.get_width() // 2, 170))
     
     for i, (name, upgrade) in enumerate(game.player.upgrades.items()):
@@ -785,7 +809,7 @@ def main():
                 draw_upgrade_shop(screen, game)
         elif game.game_state == "victory":
             screen.fill(BLACK)
-            win_text = font_title.render("🎉 VICTORY! 🎉", True, GOLD)
+            win_text = font_title.render("VICTORY!", True, GOLD)
             screen.blit(win_text, (WIDTH // 2 - win_text.get_width() // 2, 200))
             
             score_text = font_large.render(f"Final Score: {game.score}", True, WHITE)
@@ -799,7 +823,7 @@ def main():
         
         elif game.game_state == "defeat":
             screen.fill(BLACK)
-            lose_text = font_title.render("💀 GAME OVER 💀", True, RED)
+            lose_text = font_title.render("GAME OVER", True, RED)
             screen.blit(lose_text, (WIDTH // 2 - lose_text.get_width() // 2, 200))
             
             score_text = font_large.render(f"Score: {game.score}", True, WHITE)
