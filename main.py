@@ -17,8 +17,30 @@ ZONES = {
 }
 
 # ============================================
-# ENEMY DEFINITIONS BY ZONE
+# SHOP ITEMS DEFINITION
 # ============================================
+SHOP_ITEMS = {
+    # Consumables (stackable, can be bought multiple times)
+    "Med Kit": {"price": 50, "effect": "heal", "value": 30, "type": "consumable", "description": "Heal 30 HP"},
+    "Super Med Kit": {"price": 100, "effect": "heal", "value": 60, "type": "consumable", "description": "Heal 60 HP"},
+    
+    # Permanent upgrades (one-time purchase only)
+    "Damage Amp": {"price": 200, "effect": "attack", "value": 5, "type": "permanent", "description": "+5 Attack (permanent)"},
+    "Shield Generator": {"price": 200, "effect": "defense", "value": 5, "type": "permanent", "description": "+5 Defense (permanent)"},
+    "Speed Chip": {"price": 150, "effect": "speed", "value": 2, "type": "permanent", "description": "+2 Speed (permanent)"},
+    "Crit Lens": {"price": 250, "effect": "crit", "value": 3, "type": "permanent", "description": "+3% Crit (permanent)"},
+    
+    # Special - Overcharge Chip (stackable, expires after 10 turns)
+    "Overcharge Chip": {"price": 150, "effect": "charge_chance", "value": 10, "max_stacks": 5, "type": "stackable", "expires": True, "expires_turns": 10, "description": "+10% chance for +2 charge (max 50%)"},
+}
+
+
+def get_shop_items_by_category():
+    """Return items organized by category."""
+    consumables = {k: v for k, v in SHOP_ITEMS.items() if v.get("type") == "consumable"}
+    permanent = {k: v for k, v in SHOP_ITEMS.items() if v.get("type") == "permanent"}
+    stackable = {k: v for k, v in SHOP_ITEMS.items() if v.get("type") == "stackable"}
+    return consumables, permanent, stackable
 ENEMY_STATS = {
     # Zone 1: Night City Slums (Levels 1-3)
     "Glitch": {"level": 1, "hp": 30, "attack": 8, "defense": 3, "charge_attack": 1, "xp": 15, "gold": 10, "emoji": "GLITCH"},
@@ -262,6 +284,63 @@ class PlayerStats:
         self.gold = 0
         self.charge = 0
         self.max_charge = 10
+        
+        # Shop-related inventory
+        self.inventory = {
+            "Med Kit": 0,
+            "Super Med Kit": 0,
+        }
+        self.purchased = []  # Track permanent upgrades already purchased
+        self.overcharge_stacks = 0
+        self.overcharge_turns = 0  # Turns until overcharge expires
+    
+    def get_overcharge_chance(self):
+        """Calculate current overcharge chance (max 50%)."""
+        return min(50, self.overcharge_stacks)
+    
+    def update_overcharge(self):
+        """Decrement overcharge turns counter."""
+        if self.overcharge_turns > 0:
+            self.overcharge_turns -= 1
+            if self.overcharge_turns == 0:
+                self.overcharge_stacks = 0
+    
+    def apply_item_effect(self, item_name):
+        """Apply item effect based on type."""
+        global effects
+        
+        if item_name not in SHOP_ITEMS:
+            return "Item not found!"
+        
+        item = SHOP_ITEMS[item_name]
+        
+        # Check consumable stack
+        if item.get("type") == "consumable":
+            if self.inventory.get(item_name, 0) <= 0:
+                return "No more of this item!"
+            
+            # Use the item
+            self.inventory[item_name] -= 1
+            
+            if item["effect"] == "heal":
+                old_hp = self.hp
+                self.hp = min(self.max_hp, self.hp + item["value"])
+                healed = self.hp - old_hp
+                
+                # Visual effects
+                effects.add_screen_flash(GREEN, 12)
+                for _ in range(12):
+                    effects.add_particle(
+                        WIDTH//2 - 150, 300,
+                        GREEN,
+                        random.randint(4, 8),
+                        (random.uniform(-3, 3), random.uniform(-4, -2)),
+                        30
+                    )
+                effects.add_floating_text(WIDTH//2 - 150, 260, f"+{healed} HP", GREEN, 35)
+                return f"Used {item_name}! Healed {healed} HP."
+        
+        return "Cannot use this item!"
     
     def level_up(self):
         """Returns True if player leveled up"""
@@ -296,8 +375,20 @@ class PlayerStats:
         self.charge = 0
     
     def add_charge(self, amount=1):
-        """Add charge, capped at max_charge"""
-        self.charge = min(self.max_charge, self.charge + amount)
+        """Add charge, capped at max_charge. Includes overcharge logic."""
+        overcharge_chance = self.get_overcharge_chance()
+        
+        # Check for overcharge bonus
+        actual_amount = amount
+        if overcharge_chance > 0 and random.random() * 100 < overcharge_chance:
+            actual_amount = 2  # Get +2 instead of +1
+            global effects
+            effects.add_floating_text(WIDTH//2 - 150, 250, "OVERCHARGE! +2", GOLD, 30)
+            effects.add_screen_flash(GOLD, 10)
+        
+        self.charge = min(self.max_charge, self.charge + actual_amount)
+        
+        return actual_amount  # Return actual amount gained (for display)
 
 
 # ============================================
@@ -1328,6 +1419,9 @@ class Game:
         
         self.score += result.get("damage", 0) // 2
         
+        # Update overcharge (decrement turns)
+        self.stats.update_overcharge()
+        
         # Check if player is defeated (using stats.hp)
         if self.stats.hp <= 0:
             self.game_state = "defeat"
@@ -1398,6 +1492,98 @@ class Game:
             effects.add_floating_text(WIDTH//2 - 150, 260, f"+{healed_amount} HP", GREEN, 35)
             return f"[HEALED] Healed for {healed_amount} HP!"
         return "Not enough gold! (Need 30)"
+    
+    def buy_shop_item(self, item_name):
+        """Buy an item from the shop."""
+        global effects
+        
+        if item_name not in SHOP_ITEMS:
+            return "Item not found!"
+        
+        item = SHOP_ITEMS[item_name]
+        
+        # Check if already purchased permanent item
+        if item.get("type") == "permanent" and item_name in self.stats.purchased:
+            return f"Already purchased {item_name}!"
+        
+        # Check gold
+        if self.stats.gold < item["price"]:
+            return f"Not enough gold! Need {item['price']}, have {self.stats.gold}"
+        
+        # Deduct gold
+        self.stats.gold -= item["price"]
+        
+        # Apply item effect based on type
+        if item.get("type") == "consumable":
+            # Add to inventory
+            if item_name not in self.stats.inventory:
+                self.stats.inventory[item_name] = 0
+            self.stats.inventory[item_name] += 1
+            return f"Bought {item_name}! Use [I] to use items."
+        
+        elif item.get("type") == "permanent":
+            # Apply permanent stat boost
+            effect = item["effect"]
+            value = item["value"]
+            
+            if effect == "attack":
+                self.stats.attack += value
+                effects.add_floating_text(WIDTH//2, HEIGHT//2 - 50, f"+{value} Attack", RED, 40)
+            elif effect == "defense":
+                self.stats.defense += value
+                effects.add_floating_text(WIDTH//2, HEIGHT//2 - 50, f"+{value} Defense", BLUE, 40)
+            elif effect == "speed":
+                self.stats.speed += value
+                effects.add_floating_text(WIDTH//2, HEIGHT//2 - 50, f"+{value} Speed", CYAN, 40)
+            elif effect == "crit":
+                self.stats.crit += value
+                effects.add_floating_text(WIDTH//2, HEIGHT//2 - 50, f"+{value}% Crit", GOLD, 40)
+            
+            # Mark as purchased
+            self.stats.purchased.append(item_name)
+            
+            # Visual effect
+            effects.add_screen_flash(GREEN, 15)
+            for _ in range(15):
+                effects.add_particle(
+                    WIDTH//2, HEIGHT//2,
+                    random.choice([GOLD, YELLOW, GREEN]),
+                    random.randint(4, 10),
+                    (random.uniform(-4, 4), random.uniform(-5, -2)),
+                    35
+                )
+            
+            self.roast_message = self.roast_engine.get_roast("upgrade", {"upgrade": item_name})
+            return f"Bought {item_name}! Permanent upgrade applied."
+        
+        elif item.get("type") == "stackable" and item["effect"] == "charge_chance":
+            # Add overcharge stacks (max 50% = 5 stacks)
+            max_chance = item.get("max_stacks", 5) * item["value"]
+            current_chance = self.stats.get_overcharge_chance()
+            
+            if current_chance >= max_chance:
+                self.stats.gold += item["price"]  # Refund
+                return "Max overcharge reached (50%)!"
+            
+            self.stats.overcharge_stacks += 1
+            self.stats.overcharge_turns = item.get("expires_turns", 10)
+            
+            new_chance = self.stats.get_overcharge_chance()
+            effects.add_floating_text(WIDTH//2, HEIGHT//2 - 50, f"Overcharge: {new_chance}%", GOLD, 40)
+            
+            effects.add_screen_flash(GOLD, 15)
+            for _ in range(15):
+                effects.add_particle(
+                    WIDTH//2, HEIGHT//2,
+                    random.choice([GOLD, YELLOW, CYAN]),
+                    random.randint(4, 10),
+                    (random.uniform(-4, 4), random.uniform(-5, -2)),
+                    35
+                )
+            
+            return f"Bought {item_name}! Overcharge chance: {new_chance}%"
+        
+        return "Unknown item type!"
     
     def start_new_game(self):
         global effects
@@ -1613,7 +1799,7 @@ def draw_game(screen, game):
     draw_text(screen, game.roast_message, 60, roast_panel_y + 40, font_medium, WHITE, WIDTH - 150)
     
     # Action feedback indicator
-    action_hint = font_small.render("Press 1-7 to attack | ENTER to end turn | U for upgrades | H to heal", True, (120, 120, 140))
+    action_hint = font_small.render("Press 1-5: Combat Actions | S: Shop | I: Inventory | H: Quick Heal", True, (120, 120, 140))
     screen.blit(action_hint, (WIDTH // 2 - action_hint.get_width() // 2, roast_panel_y + 95))
     
     # Stats bar at bottom
@@ -1874,21 +2060,27 @@ def draw_attack_menu(screen, game, duck_y):
     enter_text = font_medium.render("[ENTER] End Turn", True, WHITE)
     screen.blit(enter_text, (menu_x + 30, actions_y + 8))
     
-    # Upgrade and heal - bigger buttons
+    # Shop and heal buttons
     pygame.draw.rect(screen, (80, 40, 80), (menu_x + 10, actions_y + 50, 125, 35), border_radius=6)
-    pygame.draw.rect(screen, PURPLE, (menu_x + 10, actions_y + 50, 125, 35), 2, border_radius=6)
+    pygame.draw.rect(screen, CYAN, (menu_x + 10, actions_y + 50, 125, 35), 2, border_radius=6)
     
     pygame.draw.rect(screen, (40, 80, 40), (menu_x + 145, actions_y + 50, 125, 35), border_radius=6)
     pygame.draw.rect(screen, GREEN, (menu_x + 145, actions_y + 50, 125, 35), 2, border_radius=6)
     
-    u_text = font_medium.render("[U] Upgrades", True, WHITE)
+    s_text = font_medium.render("[S] Shop", True, WHITE)
     h_text = font_medium.render("[H] Heal", True, WHITE)
-    screen.blit(u_text, (menu_x + 20, actions_y + 55))
+    screen.blit(s_text, (menu_x + 30, actions_y + 55))
     screen.blit(h_text, (menu_x + 160, actions_y + 55))
     
-    # Gold display
-    gold_text = font_medium.render(f"Gold: {game.player.gold}", True, GOLD)
-    screen.blit(gold_text, (menu_x + 20, actions_y + 100))
+    # Inventory button
+    pygame.draw.rect(screen, (60, 40, 80), (menu_x + 10, actions_y + 95, 125, 30), border_radius=6)
+    pygame.draw.rect(screen, PURPLE, (menu_x + 10, actions_y + 95, 125, 30), 2, border_radius=6)
+    i_text = font_small.render("[I] Inventory", True, WHITE)
+    screen.blit(i_text, (menu_x + 25, actions_y + 100))
+    
+    # Gold display - use stats.gold instead of player.gold
+    gold_text = font_medium.render(f"Gold: {game.stats.gold}", True, GOLD)
+    screen.blit(gold_text, (menu_x + 20, actions_y + 130))
     
     # Actions remaining indicator
     actions_left = game.player.actions_per_turn - game.player.actions_used
@@ -1965,10 +2157,254 @@ def draw_upgrade_shop(screen, game):
     screen.blit(exit_text, (WIDTH // 2 - exit_text.get_width() // 2, HEIGHT - 90))
 
 
+def draw_shop(screen, game):
+    """Draw the new shop UI with shop items."""
+    # Dark overlay
+    overlay = pygame.Surface((WIDTH, HEIGHT))
+    overlay.set_alpha(200)
+    overlay.fill(BLACK)
+    screen.blit(overlay, (0, 0))
+    
+    # Shop panel - wider for items
+    shop_rect = pygame.Rect(100, 50, WIDTH - 200, HEIGHT - 100)
+    pygame.draw.rect(screen, (20, 20, 40), shop_rect, border_radius=16)
+    pygame.draw.rect(screen, CYAN, shop_rect, 4, border_radius=16)
+    
+    # Title
+    title = font_title.render("SHOP", True, YELLOW)
+    screen.blit(title, (WIDTH // 2 - title.get_width() // 2, 65))
+    
+    # Gold and Overcharge display
+    gold_box = pygame.Rect(WIDTH//2 - 100, 110, 200, 35)
+    pygame.draw.rect(screen, DARK_GRAY, gold_box, border_radius=6)
+    pygame.draw.rect(screen, GOLD, gold_box, 2, border_radius=6)
+    gold_text = font_medium.render(f"{game.stats.gold} Gold", True, GOLD)
+    screen.blit(gold_text, (WIDTH // 2 - gold_text.get_width() // 2, 118))
+    
+    # Overcharge indicator
+    overcharge_chance = game.stats.get_overcharge_chance()
+    if overcharge_chance > 0:
+        overcharge_box = pygame.Rect(WIDTH//2 - 100, 150, 200, 30)
+        pygame.draw.rect(screen, (40, 30, 20), overcharge_box, border_radius=4)
+        overcharge_text = font_small.render(f"Overcharge: {overcharge_chance}% ({game.stats.overcharge_turns}t)", True, GOLD)
+        screen.blit(overcharge_text, (WIDTH // 2 - overcharge_text.get_width() // 2, 155))
+    
+    # Get items by category
+    consumables, permanent, stackable = get_shop_items_by_category()
+    
+    y_start = 190
+    
+    # === CONSUMABLES ===
+    section_y = y_start
+    section_title = font_large.render("CONSUMABLES", True, GREEN)
+    screen.blit(section_title, (130, section_y))
+    
+    i = 0
+    for name, item in consumables.items():
+        col = i % 4
+        row = i // 4
+        x = 130 + col * 260
+        y = section_y + 35 + row * 90
+        
+        card = pygame.Rect(x, y, 240, 80)
+        can_afford = game.stats.gold >= item["price"]
+        owned = game.stats.inventory.get(name, 0)
+        
+        card_color = (40, 50, 40) if can_afford else (30, 30, 35)
+        pygame.draw.rect(screen, card_color, card, border_radius=8)
+        border_color = GREEN if can_afford else RED
+        pygame.draw.rect(screen, border_color, card, 2, border_radius=8)
+        
+        # Name
+        name_text = font_medium.render(name, True, YELLOW if can_afford else GRAY)
+        screen.blit(name_text, (x + 10, y + 5))
+        
+        # Description
+        desc_text = font_small.render(item["description"], True, WHITE if can_afford else GRAY)
+        screen.blit(desc_text, (x + 10, y + 30))
+        
+        # Price and owned
+        price_text = font_small.render(f"{item['price']}g", True, GOLD if can_afford else RED)
+        screen.blit(price_text, (x + 10, y + 55))
+        
+        if owned > 0:
+            owned_text = font_small.render(f"x{owned}", True, CYAN)
+            screen.blit(owned_text, (x + 180, y + 55))
+        
+        # Key hint
+        key_hint = font_small.render(f"[{i+1}]", True, (100, 100, 120))
+        screen.blit(key_hint, (x + 200, y + 10))
+        
+        i += 1
+    
+    # === PERMANENT UPGRADES ===
+    perm_start_y = section_y + 35 + ((len(consumables) + 3) // 4) * 90 + 20
+    perm_title = font_large.render("PERMANENT UPGRADES", True, BLUE)
+    screen.blit(perm_title, (130, perm_start_y))
+    
+    i = 0
+    for name, item in permanent.items():
+        purchased = name in game.stats.purchased
+        col = i % 4
+        row = i // 4
+        x = 130 + col * 260
+        y = perm_start_y + 35 + row * 90
+        
+        card = pygame.Rect(x, y, 240, 80)
+        can_afford = game.stats.gold >= item["price"] and not purchased
+        
+        card_color = (40, 40, 60) if can_afford else (30, 30, 40)
+        if purchased:
+            card_color = (30, 40, 30)  # Greenish for purchased
+        pygame.draw.rect(screen, card_color, card, border_radius=8)
+        
+        if purchased:
+            border_color = GREEN
+        else:
+            border_color = BLUE if can_afford else RED
+        pygame.draw.rect(screen, border_color, card, 2, border_radius=8)
+        
+        # Name
+        name_text = font_medium.render(name, True, YELLOW if not purchased else GREEN)
+        screen.blit(name_text, (x + 10, y + 5))
+        
+        # Description
+        desc_text = font_small.render(item["description"], True, WHITE if not purchased else GRAY)
+        screen.blit(desc_text, (x + 10, y + 30))
+        
+        # Price or purchased indicator
+        if purchased:
+            price_text = font_small.render("OWNED", True, GREEN)
+        else:
+            price_text = font_small.render(f"{item['price']}g", True, GOLD if can_afford else RED)
+        screen.blit(price_text, (x + 10, y + 55))
+        
+        # Key hint
+        key_hint = font_small.render(f"[{i+len(consumables)+1}]", True, (100, 100, 120))
+        screen.blit(key_hint, (x + 200, y + 10))
+        
+        i += 1
+    
+    # === STACKABLE ===
+    stack_start_y = perm_start_y + 35 + ((len(permanent) + 3) // 4) * 90 + 20
+    stack_title = font_large.render("STACKABLE (EXPIRES)", True, PURPLE)
+    screen.blit(stack_title, (130, stack_start_y))
+    
+    i = 0
+    for name, item in stackable.items():
+        col = i % 4
+        row = i // 4
+        x = 130 + col * 260
+        y = stack_start_y + 35 + row * 90
+        
+        card = pygame.Rect(x, y, 240, 80)
+        can_afford = game.stats.gold >= item["price"]
+        
+        card_color = (50, 40, 60) if can_afford else (40, 30, 40)
+        pygame.draw.rect(screen, card_color, card, border_radius=8)
+        border_color = PURPLE if can_afford else RED
+        pygame.draw.rect(screen, border_color, card, 2, border_radius=8)
+        
+        # Name
+        name_text = font_medium.render(name, True, PURPLE if can_afford else GRAY)
+        screen.blit(name_text, (x + 10, y + 5))
+        
+        # Description
+        desc_text = font_small.render(item["description"], True, WHITE if can_afford else GRAY)
+        screen.blit(desc_text, (x + 10, y + 30))
+        
+        # Price
+        price_text = font_small.render(f"{item['price']}g", True, GOLD if can_afford else RED)
+        screen.blit(price_text, (x + 10, y + 55))
+        
+        # Key hint
+        key_hint = font_small.render(f"[{i+len(consumables)+len(permanent)+1}]", True, (100, 100, 120))
+        screen.blit(key_hint, (x + 200, y + 10))
+        
+        i += 1
+    
+    # Exit and inventory hints
+    exit_box = pygame.Rect(WIDTH//2 - 180, HEIGHT - 80, 160, 35)
+    pygame.draw.rect(screen, DARK_GRAY, exit_box, border_radius=6)
+    pygame.draw.rect(screen, WHITE, exit_box, 1, border_radius=6)
+    exit_text = font_small.render("ESC to close", True, WHITE)
+    screen.blit(exit_text, (WIDTH // 2 - exit_text.get_width() // 2 + 20, HEIGHT - 72))
+    
+    # Inventory hint
+    inv_box = pygame.Rect(WIDTH//2 + 20, HEIGHT - 80, 160, 35)
+    pygame.draw.rect(screen, DARK_GRAY, inv_box, border_radius=6)
+    pygame.draw.rect(screen, CYAN, inv_box, 1, border_radius=6)
+    inv_text = font_small.render("[I] Inventory", True, WHITE)
+    screen.blit(inv_text, (WIDTH // 2 + 35, HEIGHT - 72))
+
+
+def draw_inventory(screen, game):
+    """Draw the inventory UI to use items."""
+    # Dark overlay
+    overlay = pygame.Surface((WIDTH, HEIGHT))
+    overlay.set_alpha(200)
+    overlay.fill(BLACK)
+    screen.blit(overlay, (0, 0))
+    
+    # Inventory panel
+    inv_rect = pygame.Rect(300, 150, WIDTH - 600, 400)
+    pygame.draw.rect(screen, (20, 20, 40), inv_rect, border_radius=16)
+    pygame.draw.rect(screen, GREEN, inv_rect, 4, border_radius=16)
+    
+    # Title
+    title = font_title.render("INVENTORY", True, YELLOW)
+    screen.blit(title, (WIDTH // 2 - title.get_width() // 2, 170))
+    
+    # Subtitle
+    sub_text = font_small.render("Press number to use item", True, CYAN)
+    screen.blit(sub_text, (WIDTH // 2 - sub_text.get_width() // 2, 210))
+    
+    # Show consumables
+    y = 250
+    has_items = False
+    
+    for item_name, count in game.stats.inventory.items():
+        if count > 0:
+            has_items = True
+            item = SHOP_ITEMS.get(item_name)
+            if not item:
+                continue
+            
+            # Item card
+            card = pygame.Rect(330, y, WIDTH - 660, 60)
+            pygame.draw.rect(screen, (30, 40, 30), card, border_radius=8)
+            pygame.draw.rect(screen, GREEN, card, 2, border_radius=8)
+            
+            # Name and count
+            name_text = font_medium.render(item_name, True, YELLOW)
+            screen.blit(name_text, (350, y + 8))
+            
+            count_text = font_medium.render(f"x{count}", True, CYAN)
+            screen.blit(count_text, (WIDTH - 400, y + 8))
+            
+            # Description
+            desc_text = font_small.render(item["description"], True, WHITE)
+            screen.blit(desc_text, (350, y + 35))
+            
+            y += 75
+    
+    if not has_items:
+        empty_text = font_medium.render("No items in inventory!", True, GRAY)
+        screen.blit(empty_text, (WIDTH // 2 - empty_text.get_width() // 2, 320))
+    
+    # Exit hint
+    exit_box = pygame.Rect(WIDTH//2 - 100, HEIGHT - 120, 200, 35)
+    pygame.draw.rect(screen, DARK_GRAY, exit_box, border_radius=6)
+    pygame.draw.rect(screen, WHITE, exit_box, 1, border_radius=6)
+    exit_text = font_small.render("ESC or S to close", True, WHITE)
+    screen.blit(exit_text, (WIDTH // 2 - exit_text.get_width() // 2, HEIGHT - 112))
+
+
 def main():
     game = Game()
     running = True
     shop_open = False
+    inventory_open = False
     show_how_to_play = False
     global effects
     effects = VisualEffects()  # Reset effects
@@ -1989,15 +2425,38 @@ def main():
                         show_how_to_play = not show_how_to_play
                 
                 elif game.game_state == "playing":
+                    # Handle shop state
                     if shop_open:
-                        if event.key == pygame.K_ESCAPE:
+                        if event.key == pygame.K_ESCAPE or event.key == pygame.K_s:
                             shop_open = False
-                        elif event.key in [pygame.K_1, pygame.K_2, pygame.K_3, pygame.K_4, pygame.K_5, pygame.K_6, pygame.K_7]:
-                            idx = event.key - pygame.K_1
-                            if idx < len(game.player.upgrades):
-                                name = list(game.player.upgrades.keys())[idx]
-                                result = game.buy_upgrade(name)
+                        elif event.key in [pygame.K_1, pygame.K_2, pygame.K_3, pygame.K_4, pygame.K_5, 
+                                         pygame.K_6, pygame.K_7, pygame.K_8, pygame.K_9, pygame.K_0]:
+                            # Get all shop items in order
+                            consumables, permanent, stackable = get_shop_items_by_category()
+                            all_items = list(consumables.keys()) + list(permanent.keys()) + list(stackable.keys())
+                            
+                            # Key mapping: 1-7 for consumables, 8-11 for permanent, 12+ for stackable
+                            key_idx = event.key - pygame.K_1
+                            if event.key == pygame.K_0:
+                                key_idx = 9  # 0 maps to position 9 (index 9)
+                            
+                            if key_idx < len(all_items):
+                                item_name = all_items[key_idx]
+                                result = game.buy_shop_item(item_name)
                                 print(result)
+                    # Handle inventory state
+                    elif inventory_open:
+                        if event.key == pygame.K_ESCAPE or event.key == pygame.K_i or event.key == pygame.K_s:
+                            inventory_open = False
+                        elif event.key in [pygame.K_1, pygame.K_2, pygame.K_3, pygame.K_4, pygame.K_5]:
+                            # Use item from inventory
+                            consumables_list = list(game.stats.inventory.items())
+                            key_idx = event.key - pygame.K_1
+                            if key_idx < len(consumables_list):
+                                item_name, count = consumables_list[key_idx]
+                                if count > 0:
+                                    result = game.stats.apply_item_effect(item_name)
+                                    print(result)
                     else:
                         # Handle new combat actions (keys 1-5)
                         if event.key in [pygame.K_1, pygame.K_2, pygame.K_3, pygame.K_4, pygame.K_5]:
@@ -2005,9 +2464,15 @@ def main():
                             result = game.player_attack(action_key)
                             print(result)
                         
-                        elif event.key == pygame.K_u:
+                        # Open shop with S
+                        elif event.key == pygame.K_s:
                             shop_open = True
                         
+                        # Open inventory with I
+                        elif event.key == pygame.K_i:
+                            inventory_open = True
+                        
+                        # Old heal with H (still works)
                         elif event.key == pygame.K_h:
                             result = game.heal_player()
                             print(result)
@@ -2025,7 +2490,9 @@ def main():
             duck_y = draw_game(screen, game)
             draw_attack_menu(screen, game, duck_y)
             if shop_open:
-                draw_upgrade_shop(screen, game)
+                draw_shop(screen, game)
+            if inventory_open:
+                draw_inventory(screen, game)
         elif game.game_state == "victory":
             draw_gradient_background(screen)
             
