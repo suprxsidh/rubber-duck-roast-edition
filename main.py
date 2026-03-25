@@ -6,6 +6,83 @@ import math
 pygame.init()
 
 # ============================================
+# ZONE DEFINITIONS
+# ============================================
+ZONES = {
+    1: {"name": "Night City Slums", "levels": [1, 2, 3], "minions": ["Glitch", "Lag", "Error", "Bug"], "general": "Virus"},
+    2: {"name": "Industrial District", "levels": [4, 5, 6], "minions": ["Crasher", "Freezer", "Trojan", "Malware"], "general": "Lagomorph"},
+    3: {"name": "Corporate Tower", "levels": [7, 8, 9], "minions": ["The Firewall", "Hacker", "Netrunner"], "general": None, "boss": "The System"},
+    4: {"name": "The Sprawl", "levels": [10, 11, 12], "minions": ["Chrome Commando", "A.I. Security"], "general": None, "boss": "The Architect"},
+    5: {"name": "Cyber Hell", "levels": [13, 14, 15], "minions": ["Rogue A.I.", "Cybernetic Demon"], "general": None, "boss": "MEGACORP CEO"},
+}
+
+# ============================================
+# ENEMY DEFINITIONS BY ZONE
+# ============================================
+ENEMY_STATS = {
+    # Zone 1: Night City Slums (Levels 1-3)
+    "Glitch": {"level": 1, "hp": 30, "attack": 8, "defense": 3, "charge_attack": 1, "xp": 15, "gold": 10, "emoji": "GLITCH"},
+    "Lag": {"level": 2, "hp": 50, "attack": 12, "defense": 6, "charge_attack": 1, "xp": 30, "gold": 25, "emoji": "LAG"},
+    "Error": {"level": 2, "hp": 40, "attack": 15, "defense": 4, "charge_attack": 1, "xp": 35, "gold": 20, "emoji": "ERROR"},
+    "Bug": {"level": 3, "hp": 70, "attack": 18, "defense": 8, "charge_attack": 1, "xp": 50, "gold": 40, "emoji": "BUG"},
+    "Virus": {"level": 3, "hp": 100, "attack": 22, "defense": 12, "charge_attack": 2, "xp": 80, "gold": 75, "emoji": "VIRUS"},
+    
+    # Zone 2: Industrial District (Levels 4-6)
+    "Crasher": {"level": 4, "hp": 80, "attack": 20, "defense": 12, "charge_attack": 2, "xp": 70, "gold": 50, "emoji": "CRASH"},
+    "Freezer": {"level": 4, "hp": 60, "attack": 25, "defense": 15, "charge_attack": 2, "xp": 60, "gold": 45, "emoji": "FREEZE"},
+    "Trojan": {"level": 5, "hp": 110, "attack": 28, "defense": 18, "charge_attack": 2, "xp": 100, "gold": 80, "emoji": "TROJAN"},
+    "Malware": {"level": 5, "hp": 90, "attack": 30, "defense": 20, "charge_attack": 2, "xp": 90, "gold": 70, "emoji": "MALWARE"},
+    "Lagomorph": {"level": 6, "hp": 150, "attack": 35, "defense": 22, "charge_attack": 2, "xp": 140, "gold": 120, "emoji": "LAGO"},
+    
+    # Zone 3: Corporate Tower (Levels 7-9)
+    "The Firewall": {"level": 7, "hp": 130, "attack": 32, "defense": 25, "charge_attack": 3, "xp": 130, "gold": 100, "emoji": "FIREWALL"},
+    "Hacker": {"level": 7, "hp": 100, "attack": 38, "defense": 20, "charge_attack": 3, "xp": 120, "gold": 95, "emoji": "HACKER"},
+    "Netrunner": {"level": 8, "hp": 150, "attack": 40, "defense": 28, "charge_attack": 3, "xp": 160, "gold": 130, "emoji": "NETRUN"},
+    "The System": {"level": 9, "hp": 220, "attack": 48, "defense": 35, "charge_attack": 3, "xp": 220, "gold": 200, "emoji": "SYSTEM"},
+    
+    # Zone 4: The Sprawl (Levels 10-12)
+    "Chrome Commando": {"level": 10, "hp": 200, "attack": 50, "defense": 38, "charge_attack": 3, "xp": 230, "gold": 200, "emoji": "COMMANDO"},
+    "A.I. Security": {"level": 11, "hp": 250, "attack": 52, "defense": 45, "charge_attack": 3, "xp": 300, "gold": 280, "emoji": "AI_SEC"},
+    "The Architect": {"level": 12, "hp": 350, "attack": 65, "defense": 50, "charge_attack": 3, "xp": 400, "gold": 400, "emoji": "ARCH"},
+    
+    # Zone 5: Cyber Hell (Levels 13-15)
+    "Rogue A.I.": {"level": 13, "hp": 300, "attack": 60, "defense": 48, "charge_attack": 3, "xp": 450, "gold": 350, "emoji": "ROGUE_AI"},
+    "Cybernetic Demon": {"level": 13, "hp": 380, "attack": 70, "defense": 52, "charge_attack": 3, "xp": 500, "gold": 400, "emoji": "DEMON"},
+    "MEGACORP CEO": {"level": 15, "hp": 600, "attack": 90, "defense": 65, "charge_attack": 3, "xp": 800, "gold": 750, "emoji": "CEO"},
+}
+
+
+def get_zone_for_level(level):
+    """Get zone number for a given level."""
+    for zone_num, zone_data in ZONES.items():
+        if level in zone_data["levels"]:
+            return zone_num
+    return 5  # Default to max zone
+
+
+def spawn_enemy_for_zone(zone_num, enemy_list=None):
+    """Spawn a random enemy appropriate for the zone."""
+    if zone_num not in ZONES:
+        zone_num = 1
+    
+    zone_data = ZONES[zone_num]
+    minions = zone_data.get("minions", [])
+    
+    if not minions:
+        # Fallback to zone 1 enemies
+        minions = ZONES[1]["minions"]
+    
+    if enemy_list is not None and enemy_list:
+        # Spawn from remaining enemies in the list
+        enemy_name = enemy_list.pop(0)
+        return Enemy(enemy_name)
+    
+    # Random minion from zone
+    enemy_name = random.choice(minions)
+    return Enemy(enemy_name)
+
+
+# ============================================
 # COMBAT ACTIONS DEFINITION
 # ============================================
 ACTIONS = {
@@ -374,22 +451,17 @@ class CombatManager:
 # ENEMY CLASS FOR CHARGE-BASED COMBAT
 # ============================================
 class Enemy:
-    ENEMY_TYPES = {
-        "Syntax Error": {"hp": 30, "attack": 8, "defense": 2, "emoji": "X", "xp": 10, "gold": 5},
-        "Null Pointer": {"hp": 25, "attack": 12, "defense": 0, "emoji": "NULL", "xp": 12, "gold": 8},
-        "Infinite Loop": {"hp": 50, "attack": 5, "defense": 5, "emoji": "LOOP", "xp": 20, "gold": 15},
-        "Memory Leak": {"hp": 35, "attack": 10, "defense": 3, "emoji": "LEAK", "xp": 15, "gold": 10},
-        "Race Condition": {"hp": 40, "attack": 15, "defense": 2, "emoji": "RACE", "xp": 18, "gold": 12},
-        "Legacy Code Boss": {"hp": 200, "attack": 25, "defense": 10, "emoji": "BOSS", "xp": 100, "gold": 100},
-    }
-    
     def __init__(self, enemy_type=None, level=1):
         if enemy_type is None:
-            enemy_type = random.choice(list(self.ENEMY_TYPES.keys())[:-1])
+            # Fallback: pick from Zone 1 enemies
+            enemy_type = random.choice(ZONES[1]["minions"])
         
-        stats = self.ENEMY_TYPES[enemy_type]
+        if enemy_type not in ENEMY_STATS:
+            enemy_type = random.choice(list(ENEMY_STATS.keys()))
+        
+        stats = ENEMY_STATS[enemy_type]
         self.name = enemy_type
-        self.level = level
+        self.level = stats["level"]
         self.hp = stats["hp"]
         self.max_hp = stats["hp"]
         self.attack = stats["attack"]
@@ -398,7 +470,7 @@ class Enemy:
         self.xp_reward = stats["xp"]
         self.gold_reward = stats["gold"]
         self.charge = 0  # Enemy charge for attacks
-        self.charge_attack = 1  # Charge attack threshold
+        self.charge_attack = stats["charge_attack"]  # Charge attack threshold
     
     def is_alive(self):
         return self.hp > 0
@@ -430,36 +502,116 @@ DUCK_SPRITE = r"""
 """
 
 ENEMY_SPRITES = {
-    "Syntax Error": r"""
-  _____
- |  X  |
- |_____|""",
-    "Null Pointer": r"""
-  _____
- |NULL |
- |_____|""",
-    "Infinite Loop": r"""
- |~~~~~|
- |     |
- |_____|
- |~~~~~|
- |     |""",
-    "Memory Leak": r"""
-  _____
- |  ~  |
- |~~~~~|
- |_____|""",
-    "Race Condition": r"""
-  /---\
-  |>>>|
-  \___/""",
-    "Legacy Code Boss": r"""
-  _______________
- |   LEGACY     |
- |    BOSS      |
- |_____________|
- |   (O_O)     |
- |_____________|"""
+    # Zone 1 Enemies
+    "Glitch": """
+   [!!!]
+  |GLITCH|
+  |_____|""",
+    "Lag": """
+   _____
+  | LAG |
+  |~~~~~|
+  |_____|""",
+    "Error": """
+   [ERR]
+  |ERROR |
+  |_____|""",
+    "Bug": """
+   /-o-\\
+  | BUG |
+  \\___/""",
+    "Virus": """
+   \\v/
+  |VIRUS|
+  /___\\""",
+    
+    # Zone 2 Enemies
+    "Crasher": """
+  /===\\
+  |CRASH|
+  \\___/""",
+    "Freezer": """
+  |***|
+  |FROZEN|
+  |***|""",
+    "Trojan": """
+   (T)
+  |TROJAN|
+  |______|""",
+    "Malware": """
+  |XXXXX|
+  |MALWR |
+  |XXXXX|""",
+    "Lagomorph": """
+   \\o/
+  |LAGO|
+  /___\\""",
+    
+    # Zone 3 Enemies
+    "The Firewall": """
+  |####|
+  |FIRE |
+  |WALL |
+  |####|""",
+    "Hacker": """
+   /***\\
+  |HACK |
+  |_____|
+   \\_/""",
+    "Netrunner": """
+  |@@@|
+  |NET |
+  |RUN |
+  |@@@|""",
+    "The System": """
+  ___________
+ |   SYSTEM   |
+ |  (O_O_O)  |
+ |___________|""",
+    
+    # Zone 4 Enemies
+    "Chrome Commando": """
+  /[=]\\
+  |CMDO|
+  |####|
+  \\___/""",
+    "A.I. Security": """
+  |[AI]|
+  |SEC |
+  |URITY|
+  |____|""",
+    "The Architect": """
+  _____________
+ |  ARCHITECT |
+ |   (O_O)   |
+ |___________|""",
+    
+    # Zone 5 Enemies
+    "Rogue A.I.": """
+  |#####|
+  |ROGUE|
+  | AI  |
+  |_____|""",
+    "Cybernetic Demon": """
+  \\(o_o)/
+  |DEMON|
+  |~~~~~|
+  /_____\\""",
+    "MEGACORP CEO": """
+  $$$$$$$$$$
+ |  MEGACORP |
+ |    CEO    |
+ |  (O_O)   |
+ |___________|""",
+    
+    # Legacy fallback
+    "Legacy Code Boss": """
+   _______________
+  |   LEGACY     |
+  |    BOSS      |
+  |_____________|
+  |   (O_O)     |
+  |_____________|"""
 }
 
 
@@ -804,24 +956,20 @@ class Player(Entity):
 
 
 class Enemy(Entity):
-    ENEMY_TYPES = {
-        "Syntax Error": {"hp": 30, "attack": 8, "defense": 2, "emoji": "X", "xp": 10, "gold": 5},
-        "Null Pointer": {"hp": 25, "attack": 12, "defense": 0, "emoji": "NULL", "xp": 12, "gold": 8},
-        "Infinite Loop": {"hp": 50, "attack": 5, "defense": 5, "emoji": "LOOP", "xp": 20, "gold": 15},
-        "Memory Leak": {"hp": 35, "attack": 10, "defense": 3, "emoji": "LEAK", "xp": 15, "gold": 10},
-        "Race Condition": {"hp": 40, "attack": 15, "defense": 2, "emoji": "RACE", "xp": 18, "gold": 12},
-        "Legacy Code Boss": {"hp": 200, "attack": 25, "defense": 10, "emoji": "BOSS", "xp": 100, "gold": 100},
-    }
-    
     def __init__(self, enemy_type=None):
         if enemy_type is None:
-            enemy_type = random.choice(list(self.ENEMY_TYPES.keys())[:-1])
+            # Fallback to zone 1 enemies
+            enemy_type = random.choice(ZONES[1]["minions"])
         
-        stats = self.ENEMY_TYPES[enemy_type]
+        if enemy_type not in ENEMY_STATS:
+            enemy_type = random.choice(list(ENEMY_STATS.keys()))
+        
+        stats = ENEMY_STATS[enemy_type]
         super().__init__(enemy_type, stats["hp"], stats["hp"], stats["attack"], stats["defense"], stats["emoji"])
         self.xp_reward = stats["xp"]
         self.gold_reward = stats["gold"]
         self.enemy_type = enemy_type
+        self.charge_attack = stats.get("charge_attack", 1)
     
     def enemy_attack(self, player):
         if player.dodging:
@@ -851,14 +999,46 @@ class Game:
         self.generate_floor()
     
     def generate_floor(self):
+        """Generate enemies based on zone progression."""
         self.enemies = []
+        
+        # Determine zone based on floor (now acting as level)
+        # floor 1-3 = Zone 1, floor 4-6 = Zone 2, etc.
+        zone_num = get_zone_for_level(self.floor)
+        zone_data = ZONES[zone_num]
+        
+        # Determine number of enemies to spawn
         enemy_count = min(2 + self.floor // 2, 5)
         
-        if self.floor % 5 == 0:
-            self.enemies.append(Enemy("Legacy Code Boss"))
+        # Build enemy list for this zone/floor
+        enemy_list = []
+        
+        # Check for boss fight (zones 3-5 have bosses after clearing minions)
+        if zone_num >= 3 and "boss" in zone_data:
+            # Spawn minions first, then boss
+            minions_to_spawn = zone_data["minions"].copy()
+            random.shuffle(minions_to_spawn)
+            
+            # Add minions (fewer than total to leave room for boss)
+            for _ in range(min(enemy_count - 1, len(minions_to_spawn))):
+                if minions_to_spawn:
+                    enemy_list.append(minions_to_spawn.pop())
+            
+            # Add boss at the end
+            enemy_list.append(zone_data["boss"])
         else:
+            # Regular floor - spawn from zone minions
+            minions = zone_data["minions"].copy()
             for _ in range(enemy_count):
-                self.enemies.append(Enemy())
+                if minions:
+                    enemy_list.append(random.choice(minions))
+        
+        # Create Enemy objects
+        for enemy_name in enemy_list:
+            self.enemies.append(Enemy(enemy_name))
+        
+        # Reset player charge at start of new zone/floor
+        self.stats.reset_charge()
         
         self.current_enemy_index = 0
         self.roast_message = self.roast_engine.get_roast("turn_start")
@@ -975,8 +1155,10 @@ class Game:
             
             self.current_enemy_index += 1
             if self.current_enemy_index >= len(self.enemies):
-                if self.floor >= 5 and self.floor % 5 == 0:
+                # Check for final boss victory (Zone 5, Level 15 = MEGACORP CEO)
+                if enemy.name == "MEGACORP CEO":
                     self.game_state = "victory"
+                    self.roast_message = "YOU DEFEATED MEGACORP CEO! THE CYBER WORLD IS FREE!"
                 else:
                     self.floor += 1
                     self.generate_floor()
@@ -1042,8 +1224,10 @@ class Game:
             
             self.current_enemy_index += 1
             if self.current_enemy_index >= len(self.enemies):
-                if self.floor >= 5 and self.floor % 5 == 0:
+                # Check for final boss victory (Zone 5 = MEGACORP CEO)
+                if enemy.name == "MEGACORP CEO":
                     self.game_state = "victory"
+                    self.roast_message = "YOU DEFEATED MEGACORP CEO! THE CYBER WORLD IS FREE!"
                 else:
                     self.floor += 1
                     self.generate_floor()
@@ -1337,12 +1521,14 @@ def draw_game(screen, game):
     screen.blit(title, (WIDTH // 2 - title.get_width() // 2, 20))
     screen.blit(subtitle, (WIDTH // 2 - subtitle.get_width() // 2, 60))
     
-    # Floor indicator with icon
-    floor_box = pygame.Rect(WIDTH - 180, 25, 160, 40)
+    # Zone and Level indicator
+    current_zone = get_zone_for_level(game.floor)
+    zone_name = ZONES[current_zone]["name"]
+    floor_box = pygame.Rect(WIDTH - 220, 25, 200, 40)
     pygame.draw.rect(screen, DARK_GRAY, floor_box, border_radius=6)
     pygame.draw.rect(screen, CYAN, floor_box, 2, border_radius=6)
-    floor_text = font_medium.render(f"Floor {game.floor}", True, CYAN)
-    screen.blit(floor_text, (WIDTH - 170, 32))
+    zone_text = font_medium.render(f"Lv {game.floor} - Zone {current_zone}", True, CYAN)
+    screen.blit(zone_text, (WIDTH - 210, 32))
     
     # Turn indicator
     turn_text = font_small.render(f"Turn: {game.roast_engine.turn_count}", True, LIGHT_GRAY)
