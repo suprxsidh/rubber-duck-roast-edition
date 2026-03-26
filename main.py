@@ -521,30 +521,38 @@ class CombatManager:
     def resolve_enemy_turn(self, player, enemy):
         """
         Resolve enemy's attack based on their charge level.
+        Enemies must build charge before they can attack.
         """
         enemy.add_charge()
         
         result = {
-            "action": "attack",
+            "action": "charge",
             "damage": 0,
             "blocked": False,
             "dodged": False,
             "message": ""
         }
         
-        # Enemy attack based on charge level
-        # If enemy charge >= 2, they do charge attack
-        if enemy.charge >= 2:
-            # Charge attack - more damage
-            base_damage = enemy.attack * 1.5
-            damage = player.take_damage(int(base_damage))
-            result["damage"] = damage
-            result["message"] = f"Enemy used CHARGE ATTACK! Dealt {damage} damage!"
+        # Enemy can only attack if they have built up charge
+        # At charge 1: they do a basic attack
+        # At charge 2+: they do a charged attack
+        if enemy.charge >= 1:
+            if enemy.charge >= 2:
+                # Charged attack - more damage
+                base_damage = enemy.attack * 1.5
+                damage = player.take_damage(int(base_damage))
+                result["damage"] = damage
+                result["action"] = "charge_attack"
+                result["message"] = f"Enemy unleashes CHARGE ATTACK! {damage} damage!"
+            else:
+                # Basic attack
+                damage = player.take_damage(enemy.attack)
+                result["damage"] = damage
+                result["action"] = "attack"
+                result["message"] = f"Enemy attacks for {damage} damage!"
         else:
-            # Normal attack
-            damage = player.take_damage(enemy.attack)
-            result["damage"] = damage
-            result["message"] = f"Enemy attacked for {damage} damage!"
+            # Enemy is still charging - no damage
+            result["message"] = f"Enemy is charging up..."
         
         self.last_enemy_action = result
         return result
@@ -1796,40 +1804,17 @@ def draw_text(surface, text, x, y, font, color=WHITE, max_width=None, align="lef
 
 
 def draw_health_bar(surface, x, y, hp, max_hp, width=200, height=24, show_text=True):
-    # Glow effect behind the bar
-    if max_hp > 0 and hp > 0:
-        hp_ratio = hp / max_hp
-        glow_color = NEON_GREEN if hp_ratio > 0.5 else (YELLOW if hp_ratio > 0.25 else RED)
-        # Draw glow
-        for i in range(3):
-            glow_alpha = 40 - i * 12
-            glow_rect = pygame.Rect(x - 2 + i, y - 2 + i, width + 4 - i*2, height + 4 - i*2)
-            glow_surf = pygame.Surface((width + 4, height + 4), pygame.SRCALPHA)
-            pygame.draw.rect(glow_surf, (*glow_color, glow_alpha), (0, 0, width + 4, height + 4), border_radius=6)
-            surface.blit(glow_surf, (x - 2 - i, y - 2 - i))
-    
     # Background
     bg_rect = pygame.Rect(x, y, width, height)
     pygame.draw.rect(surface, (30, 30, 45), bg_rect, border_radius=4)
     
-    # Health fill with gradient - neon colors
+    # Health fill - simplified solid color
     if max_hp > 0:
         fill_width = int((hp / max_hp) * (width - 4))
         if fill_width > 0:
-            # Create gradient effect with neon colors
-            for i in range(fill_width):
-                ratio = i / fill_width
-                if hp > max_hp * 0.5:
-                    # Green to Yellow to Orange
-                    r = int(NEON_GREEN[0] + (255 - NEON_GREEN[0]) * ratio * 2) if ratio < 0.5 else int(255 + (ORANGE[0] - 255) * (ratio - 0.5) * 2)
-                    g = int(NEON_GREEN[1] + (223 - NEON_GREEN[1]) * ratio * 2) if ratio < 0.5 else int(223 + (150 - 223) * (ratio - 0.5) * 2)
-                    b = int(NEON_GREEN[2] + (0 - NEON_GREEN[2]) * ratio * 2) if ratio < 0.5 else int(0 + (50 - 0) * (ratio - 0.5) * 2)
-                else:
-                    # Orange to Red
-                    r = int(ORANGE[0] * 0.8 + 200 * ratio)
-                    g = int(ORANGE[1] * 0.6 + 80 * ratio)
-                    b = int(ORANGE[2] * 0.6 + 50 * ratio)
-                pygame.draw.line(surface, (r, g, b), (x + 2 + i, y + 2), (x + 2 + i, y + height - 2))
+            bar_color = NEON_GREEN if hp > max_hp * 0.5 else (YELLOW if hp > max_hp * 0.25 else RED)
+            bar_rect = pygame.Rect(x + 2, y + 2, fill_width, height - 4)
+            pygame.draw.rect(surface, bar_color, bar_rect, border_radius=2)
     
     # Border - neon glow
     border_color = NEON_GREEN if hp > max_hp * 0.3 else RED
