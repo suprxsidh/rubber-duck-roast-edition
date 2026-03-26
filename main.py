@@ -298,6 +298,12 @@ class PlayerStats:
         self.overcharge_stacks = 0
         self.overcharge_turns = 0  # Turns until overcharge expires
     
+    def take_damage(self, damage):
+        """Apply damage to player, factoring in defense."""
+        actual_damage = max(1, damage - self.defense)
+        self.hp = max(0, self.hp - actual_damage)
+        return actual_damage
+    
     def get_overcharge_chance(self):
         """Calculate current overcharge chance (max 50%)."""
         return min(50, self.overcharge_stacks)
