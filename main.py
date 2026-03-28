@@ -1461,6 +1461,14 @@ class Game:
         # Resolve simultaneous combat
         result = resolve_simultaneous_combat(player_action, enemy_action, self.stats, enemy)
         
+        # Apply damage to enemy
+        if result["enemy_damage"] > 0:
+            enemy.take_damage(result["enemy_damage"])
+        
+        # Apply damage to player
+        if result["player_damage"] > 0:
+            self.stats.take_damage(result["player_damage"])
+        
         # Add visual effects based on result
         if "player_charge" in result["events"]:
             effects.add_floating_text(WIDTH//2 - 150, 300, "+1 CHARGE", CYAN, 30)
