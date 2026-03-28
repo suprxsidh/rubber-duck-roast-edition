@@ -200,7 +200,23 @@ def resolve_simultaneous_combat(player_action, enemy_action, player, enemy):
             result["player_message"] = "Dodge stance ready!"
     
     elif player_action == "block":
-        result["player_message"] = "Block ready!"
+        # Block reflects 50% of damage back to enemy
+        if enemy_action in ["shoot", "special"]:
+            block_rate = 0.70 if enemy_action == "shoot" else 0.60
+            if random.random() < block_rate:
+                # Block succeeds - calculate damage and reflect 50%
+                attack_power = enemy.attack * (2 if enemy_action == "special" else 1)
+                incoming_dmg = max(1, attack_power - player.defense)
+                reflect_dmg = int(incoming_dmg * 0.50)
+                result["player_damage"] = 0  # No damage to player
+                if reflect_dmg > 0:
+                    result["enemy_damage"] += reflect_dmg
+                result["events"].append("player_block_reflect")
+                result["player_message"] = f"BLOCKED & REFLECTED! {reflect_dmg} dmg back!"
+            else:
+                result["player_message"] = "Block failed!"
+        else:
+            result["player_message"] = "Block stance ready!"
     
     elif player_action == "shoot":
         if player.charge >= 1:
@@ -256,7 +272,22 @@ def resolve_simultaneous_combat(player_action, enemy_action, player, enemy):
             result["enemy_message"] = "Enemy braces!"
     
     elif enemy_action == "block":
-        result["enemy_message"] = "Enemy blocks!"
+        # Enemy block also reflects 50% damage
+        if player_action in ["shoot", "special"]:
+            block_rate = 0.70 if player_action == "shoot" else 0.60
+            if random.random() < block_rate:
+                attack_power = player.attack * (2 if player_action == "special" else 1)
+                incoming_dmg = max(1, attack_power - enemy.defense)
+                reflect_dmg = int(incoming_dmg * 0.50)
+                result["enemy_damage"] = 0
+                if reflect_dmg > 0:
+                    result["player_damage"] += reflect_dmg
+                result["events"].append("enemy_block_reflect")
+                result["enemy_message"] = f"Enemy BLOCKED & REFLECTED! {reflect_dmg} dmg back!"
+            else:
+                result["enemy_message"] = "Enemy block failed!"
+        else:
+            result["enemy_message"] = "Enemy braces!"
     
     elif enemy_action == "shoot":
         if enemy.charge >= 1:
@@ -500,7 +531,7 @@ class PlayerStats:
         self.crit = 5  # 5% crit chance
         self.gold = 0
         self.charge = 0
-        self.max_charge = 10
+        self.max_charge = 4
         
         # Shop-related inventory
         self.inventory = {
