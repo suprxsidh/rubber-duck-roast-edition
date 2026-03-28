@@ -82,6 +82,219 @@ def get_zone_for_level(level):
     return 5  # Default to max zone
 
 
+def get_enemy_ai_action(enemy, zone_num):
+    """
+    Get enemy action based on AI difficulty.
+    - Zone 1-2 (Basic): Random
+    - Zone 3-4 (Smart): Prefers Charge if charge < 2
+    - Zone 5 (Expert): Reads situation, sometimes Special
+    """
+    actions = ["charge", "shoot", "dodge", "block"]
+    
+    # Starting charge based on zone difficulty
+    if zone_num <= 2:
+        ai_level = "basic"
+    elif zone_num <= 4:
+        ai_level = "smart"
+    else:
+        ai_level = "expert"
+    
+    # If can shoot (has charge), add shoot options
+    if enemy.charge >= 2:
+        actions.extend(["shoot", "special"])
+    elif enemy.charge >= 1:
+        actions.append("shoot")
+    
+    if ai_level == "basic":
+        # Pure random
+        return random.choice(actions)
+    
+    elif ai_level == "smart":
+        # Prefer charge if low charge
+        if enemy.charge < 2:
+            if random.random() < 0.6:  # 60% chance to charge
+                return "charge"
+        # Otherwise random
+        return random.choice(actions)
+    
+    else:  # expert
+        # Smart play
+        if enemy.charge < 2:
+            if random.random() < 0.4:  # 40% chance to special if can
+                return "special"
+            elif random.random() < 0.5:
+                return "charge"
+        # High charge - attack!
+        if enemy.charge >= 2 and random.random() < 0.3:
+            return "special"
+        return random.choice(["shoot", "block", "dodge"])
+
+
+def resolve_simultaneous_combat(player_action, enemy_action, player, enemy):
+    """
+    Resolve simultaneous combat - both actions happen at once!
+    Returns dict with player_damage, enemy_damage, player_charge_change, enemy_charge_change, messages
+    """
+    result = {
+        "player_damage": 0,
+        "enemy_damage": 0,
+        "player_charge": 0,
+        "enemy_charge": 0,
+        "player_message": "",
+        "enemy_message": "",
+        "events": []
+    }
+    
+    # Helper functions
+    def do_shoot(attacker_is_player):
+        hit = random.random() < 0.85  # 85% hit rate
+        if hit:
+            is_crit = random.random() * 100 < (player.crit if attacker_is_player else 10)
+            base = player.attack if attacker_is_player else enemy.attack
+            dmg = base * (2 if is_crit else 1)
+            dmg = max(1, dmg - (enemy.defense if attacker_is_player else player.defense))
+            return dmg, is_crit, hit
+        return 0, False, hit
+    
+    def do_special(attacker_is_player):
+        hit = random.random() < 0.70  # 70% hit rate
+        if hit:
+            is_crit = random.random() * 100 < (player.crit if attacker_is_player else 10)
+            base = player.attack if attacker_is_player else enemy.attack
+            dmg = base * 2  # 2x damage
+            dmg = max(1, dmg - (enemy.defense if attacker_is_player else player.defense))
+            return dmg, is_crit, hit
+        return 0, False, hit
+    
+    def do_dodge(is_player):
+        # Dodge: 85% success against shoot, 0% against special
+        return random.random() < 0.85
+    
+    def do_block(is_player):
+        # Block: 70% against shoot, 60% against special
+        attack_type = enemy_action if is_player else player_action
+        rate = 0.70 if attack_type == "shoot" else 0.60
+        return random.random() < rate
+    
+    # Resolve each action
+    player_action = player_action.lower() if isinstance(player_action, str) else player_action
+    enemy_action = enemy_action.lower() if isinstance(enemy_action, str) else enemy_action
+    
+    # === PLAYER ACTION ===
+    if player_action == "charge":
+        player.charge = min(player.max_charge, player.charge + 1)
+        result["player_charge"] = 1
+        result["player_message"] = "You charged up!"
+        result["events"].append("player_charge")
+    
+    elif player_action == "dodge":
+        if enemy_action in ["shoot", "special"]:
+            if do_dodge(True):
+                player.charge = min(player.max_charge, player.charge + 1)
+                result["player_charge"] = 1
+                result["events"].append("player_dodge_success")
+                result["player_message"] = "Dodged! +1 bonus charge!"
+            else:
+                result["player_message"] = "Dodge failed!"
+        else:
+            result["player_message"] = "Dodge stance ready!"
+    
+    elif player_action == "block":
+        result["player_message"] = "Block ready!"
+    
+    elif player_action == "shoot":
+        if player.charge >= 1:
+            player.charge -= 1
+            dmg, crit, hit = do_shoot(True)
+            result["enemy_damage"] = dmg
+            if hit:
+                result["events"].append("player_hit")
+                if crit:
+                    result["events"].append("player_crit")
+                    result["player_message"] = f"CRITICAL SHOT! {dmg} damage!"
+                else:
+                    result["player_message"] = f"Shot hit for {dmg} damage!"
+            else:
+                result["player_message"] = "Shot missed!"
+        else:
+            result["player_message"] = "Not enough charge to shoot!"
+    
+    elif player_action == "special":
+        if player.charge >= 2:
+            player.charge -= 2
+            dmg, crit, hit = do_special(True)
+            result["enemy_damage"] = dmg
+            if hit:
+                result["events"].append("player_hit")
+                if crit:
+                    result["events"].append("player_crit")
+                    result["player_message"] = f"MASSIVE HIT! {dmg} damage!"
+                else:
+                    result["player_message"] = f"Special hit for {dmg} damage!"
+            else:
+                result["player_message"] = "Special missed!"
+        else:
+            result["player_message"] = "Need 2 charge for special!"
+    
+    # === ENEMY ACTION ===
+    if enemy_action == "charge":
+        enemy.charge = min(3, enemy.charge + 1)
+        result["enemy_charge"] = 1
+        result["enemy_message"] = "Enemy charged up!"
+        result["events"].append("enemy_charge")
+    
+    elif enemy_action == "dodge":
+        if player_action in ["shoot", "special"]:
+            if do_dodge(False):
+                enemy.charge = min(3, enemy.charge + 1)
+                result["enemy_charge"] = 1
+                result["events"].append("enemy_dodge_success")
+                result["enemy_message"] = "Enemy dodged!"
+            else:
+                result["enemy_message"] = "Enemy dodge failed!"
+        else:
+            result["enemy_message"] = "Enemy braces!"
+    
+    elif enemy_action == "block":
+        result["enemy_message"] = "Enemy blocks!"
+    
+    elif enemy_action == "shoot":
+        if enemy.charge >= 1:
+            enemy.charge -= 1
+            dmg, crit, hit = do_shoot(False)
+            result["player_damage"] = dmg
+            if hit:
+                result["events"].append("enemy_hit")
+                if crit:
+                    result["events"].append("enemy_crit")
+                    result["enemy_message"] = f"Enemy CRITICAL! {dmg} damage!"
+                else:
+                    result["enemy_message"] = f"Enemy shoots for {dmg} damage!"
+            else:
+                result["enemy_message"] = "Enemy shot missed!"
+        else:
+            result["enemy_message"] = "Enemy has no charge!"
+    
+    elif enemy_action == "special":
+        if enemy.charge >= 2:
+            enemy.charge -= 2
+            dmg, crit, hit = do_special(False)
+            result["player_damage"] = dmg
+            if hit:
+                result["events"].append("enemy_hit")
+                if crit:
+                    result["events"].append("enemy_crit")
+                    result["enemy_message"] = f"Enemy MASSIVE! {dmg} damage!"
+                else:
+                    result["enemy_message"] = f"Enemy special for {dmg} damage!"
+            else:
+                result["enemy_message"] = "Enemy special missed!"
+        else:
+            result["enemy_message"] = "Enemy has no charge for special!"
+    
+    return result
+
+
 def spawn_enemy_for_zone(zone_num, enemy_list=None):
     """Spawn a random enemy appropriate for the zone."""
     if zone_num not in ZONES:
@@ -1193,9 +1406,20 @@ class Game:
                 if minions:
                     enemy_list.append(random.choice(minions))
         
-        # Create Enemy objects
+        # Create Enemy objects with starting charge based on zone difficulty
         for enemy_name in enemy_list:
-            self.enemies.append(Enemy(enemy_name))
+            enemy = Enemy(enemy_name)
+            # Starting charge based on zone:
+            # Zone 1-2: 0 charge
+            # Zone 3-4: 1 charge  
+            # Zone 5: 2 charge
+            if zone_num >= 5:
+                enemy.charge = 2
+            elif zone_num >= 3:
+                enemy.charge = 1
+            else:
+                enemy.charge = 0
+            self.enemies.append(enemy)
         
         # Reset player charge at start of new zone/floor
         self.stats.reset_charge()
@@ -1209,7 +1433,7 @@ class Game:
         return None
     
     def player_attack(self, action_key):
-        """Handle player action using charge-based combat system."""
+        """Handle player action using SIMULTANEOUS combat system."""
         global effects
         
         # Map keys to action names
@@ -1224,74 +1448,62 @@ class Game:
         if action_key not in action_map:
             return "Invalid action!"
         
-        action_name = action_map[action_key]
+        player_action = action_map[action_key]
         
         enemy = self.get_current_enemy()
         if not enemy:
             return "No enemy to attack!"
         
-        # Add +1 charge at turn start
-        self.stats.add_charge(1)
+        # Get enemy action based on AI
+        zone_num = get_zone_for_level(self.floor)
+        enemy_action = get_enemy_ai_action(enemy, zone_num)
         
-        # Resolve player action
-        result = self.combat_manager.resolve_player_action(self.stats, enemy, action_name)
+        # Resolve simultaneous combat
+        result = resolve_simultaneous_combat(player_action, enemy_action, self.stats, enemy)
         
-        # Add visual effects based on action
-        if action_name == "charge":
+        # Add visual effects based on result
+        if "player_charge" in result["events"]:
             effects.add_floating_text(WIDTH//2 - 150, 300, "+1 CHARGE", CYAN, 30)
             effects.add_screen_flash(CYAN, 8)
-        elif action_name == "dodge":
-            if result["success"]:
-                effects.add_floating_text(WIDTH//2 - 150, 300, "DODGED!", CYAN, 30)
-                effects.add_screen_flash(CYAN, 10)
+        
+        if "player_dodge_success" in result["events"]:
+            effects.add_floating_text(WIDTH//2 - 150, 300, "DODGED! +1", CYAN, 30)
+            effects.add_screen_flash(CYAN, 10)
+        
+        if "player_hit" in result["events"]:
+            if "player_crit" in result["events"]:
+                effects.add_floating_text(WIDTH//2 + 150, 280, f"CRITICAL! -{result['enemy_damage']}", GOLD, 40)
+                effects.add_screen_flash(GOLD, 15)
             else:
-                effects.add_floating_text(WIDTH//2 - 150, 300, "DODGE FAILED", RED, 30)
-        elif action_name == "block":
-            if result["success"]:
-                effects.add_floating_text(WIDTH//2 - 150, 300, "BLOCKED!", GREEN, 30)
-                effects.add_screen_flash(GREEN, 10)
+                effects.add_floating_text(WIDTH//2 + 150, 280, f"-{result['enemy_damage']}", WHITE, 35)
+            effects.add_screen_flash(RED, 8)
+            effects.add_shake(8, 10)
+            for _ in range(8):
+                effects.add_particle(
+                    WIDTH//2 + 150, 300,
+                    GOLD if "player_crit" in result["events"] else RED,
+                    random.randint(3, 8),
+                    (random.uniform(-3, 3), random.uniform(-2, -5)),
+                    25
+                )
+        
+        if result["player_message"] and "miss" in result["player_message"].lower():
+            effects.add_floating_text(WIDTH//2 + 150, 300, "MISS!", GRAY, 30)
+        
+        if "enemy_hit" in result["events"]:
+            if "enemy_crit" in result["events"]:
+                effects.add_floating_text(WIDTH//2 - 150, 320, f"-{result['player_damage']} CRIT!", RED, 35)
+                effects.add_screen_flash(DARK_RED, 12)
             else:
-                effects.add_floating_text(WIDTH//2 - 150, 300, "BLOCK FAILED", RED, 30)
-        elif action_name == "shoot":
-            if result["success"]:
-                if "crit" in result.get("effects", []):
-                    effects.add_floating_text(WIDTH//2 + 150, 280, f"CRITICAL! -{result['damage']}", GOLD, 40)
-                    effects.add_screen_flash(GOLD, 15)
-                else:
-                    effects.add_floating_text(WIDTH//2 + 150, 280, f"-{result['damage']}", WHITE, 35)
-                effects.add_screen_flash(RED, 8)
-                effects.add_shake(8, 10)
-                # Attack particles
-                for _ in range(8):
-                    effects.add_particle(
-                        WIDTH//2 + 150, 300,
-                        RED if "crit" not in result.get("effects", []) else GOLD,
-                        random.randint(3, 8),
-                        (random.uniform(-3, 3), random.uniform(-2, -5)),
-                        25
-                    )
-            else:
-                effects.add_floating_text(WIDTH//2 + 150, 300, "MISS!", GRAY, 30)
-        elif action_name == "special":
-            if result["success"]:
-                if "crit" in result.get("effects", []):
-                    effects.add_floating_text(WIDTH//2 + 150, 280, f"MASSIVE! -{result['damage']}", GOLD, 40)
-                    effects.add_screen_flash(GOLD, 20)
-                else:
-                    effects.add_floating_text(WIDTH//2 + 150, 280, f"-{result['damage']}", ORANGE, 35)
-                effects.add_screen_flash(ORANGE, 12)
-                effects.add_shake(12, 15)
-                # Special attack particles
-                for _ in range(12):
-                    effects.add_particle(
-                        WIDTH//2 + 150, 300,
-                        ORANGE if "crit" not in result.get("effects", []) else GOLD,
-                        random.randint(4, 10),
-                        (random.uniform(-4, 4), random.uniform(-3, -6)),
-                        30
-                    )
-            else:
-                effects.add_floating_text(WIDTH//2 + 150, 300, "MISS!", GRAY, 30)
+                effects.add_floating_text(WIDTH//2 - 150, 320, f"-{result['player_damage']}", RED, 30)
+            effects.add_screen_flash(RED, 8)
+            effects.add_shake(8, 10)
+        
+        if result["enemy_message"] and "miss" in result["enemy_message"].lower():
+            effects.add_floating_text(WIDTH//2 - 150, 300, "ENEMY MISS!", GREEN, 30)
+        
+        # Build result message
+        result_msg = result.get("player_message", "") + "\n" + result.get("enemy_message", "")
         
         # Check if enemy is defeated
         if not enemy.is_alive():
@@ -1369,21 +1581,9 @@ class Game:
                         self.floor += 1
                         self.generate_floor()
             
-            return result["message"] + result_message
+            return result_msg + result_message
         
-        # Enemy turn
-        self.enemy_turn()
-        
-        return result["message"]
-        
-        damage, crit = self.player.attack_target(attack_name, enemy)
-        
-        if damage == 0:
-            self.roast_message = self.roast_engine.get_roast("mistake", {"mistake": "missed attack"})
-            effects.add_floating_text(WIDTH//2, 300, "MISS!", GRAY, 30)
-            return f"[MISS] You missed with {attack_name}!"
-        
-        self.roast_message = self.roast_engine.get_roast("attack", {"attack": attack_name, "enemy_hp": enemy.hp})
+        return result_msg
         
         # Visual effects for attack
         effects.add_screen_flash(RED, 8)
@@ -2986,8 +3186,10 @@ def main():
             
             # Tech decoration
             for i in range(0, 560, 25):
-                pygame.draw.line(screen, (RED, 50), (WIDTH//2 - 280 + i, 120), (WIDTH//2 - 280 + i + 12, 120), 1)
-                pygame.draw.line(screen, (RED, 50), (WIDTH//2 - 280 + i, 600), (WIDTH//2 - 280 + i + 12, 600), 1)
+                line_surf = pygame.Surface((15, 3), pygame.SRCALPHA)
+                pygame.draw.line(line_surf, (200, 50, 50, 80), (0, 1), (12, 1), 1)
+                screen.blit(line_surf, (WIDTH//2 - 280 + i, 120))
+                screen.blit(line_surf, (WIDTH//2 - 280 + i, 600))
             
             # Defeat text - glitchy
             glitch = random.randint(-2, 2) if random.random() < 0.2 else 0
